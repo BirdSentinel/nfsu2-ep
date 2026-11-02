@@ -35,6 +35,9 @@ The generated C and the compiled module are made from the game, so they are neve
 
 ## Play
 
+On Windows, the WSL build can be opened with `Play-Egyuttparkolas.cmd` after
+compilation. See [the Windows launcher instructions](docs/web/WINDOWS.md).
+
 ```sh
 web/start.sh --data "/path/to/Need for Speed Underground 2"
 ```
