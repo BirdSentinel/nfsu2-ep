@@ -1,0 +1,208 @@
+Shared-engine split-screen browser port
+======================================
+
+Windows checkout: C:\Files\Git\nfsu2-ep
+WSL Ubuntu build copy: /root/nfsu2-ep
+Original game: C:\Games\Need for Speed Underground 2 (never modified).
+
+Architecture
+------------
+One lifted game engine, one physics world and six independent local players.
+Derived from the MIT NFSU2-SplitScreen-main source (copyright 2026 mihaits);
+license retained in licenses/NFSU2-SplitScreen.txt. The ASI's x86 patch writes
+are translated into static operand relocations, function overrides and hooks.
+
+runtime/splitscreen.c ports player creation, input conversion, private cameras,
+HUD packages, viewports, streaming zones/pools, settings mirrors, rumble state
+bounds, pause ownership and multiplayer finish/catch-up rules. The original
+NUM_PLAYERS remains two; separate relocated arrays hold the six actual players.
+tools/split_reloc.py handles operand-specific relocation and capacity changes.
+
+The browser input mailbox has six independent seqlocked records. Controllers
+claim seats on Start and release joining buttons before driving. The WebGPU
+protocol carries per-draw viewports and region clears preserve adjacent views.
+
+Validation as of 2026-11-03
+-------------------------
+* Two-player Circuit race: ten assertions passed, distinct cameras and cars.
+* Six-player Circuit race: six distinct player objects, all six throttle and
+  steering checks passed; disconnect/reconnect of player six preserves player
+  five's throttle. Live browser screenshots show all six cars driving in one
+  world. No runtime trap in that run.
+* Six-seat ownership/disconnect and viewport tests pass (five tests).
+* WASI C input tests pass, including six-seat reads and 2100 keyboard records.
+* Six relocation tests pass. tools/check_split_sites.py verified all 27 settings
+  reader sites, render scratch sizes and human-manager capacity against SPEED2.EXE.
+* Full WASM/TypeScript/production browser builds pass.
+* All 36 split_six.txt driving, hotplug, pause/resume and restart assertions
+  passed. Both P1 and P6 pause the simulation and resume with their own pad;
+  restarting resets the race clock and preserves independent P6 driving.
+* A full three-lap Circuit race completed with six AI-driven local cars.
+  The Event Results screen displayed all six separate finish times: P6
+  5:18.56, P4 5:20.17, P3 5:22.27, P2 5:23.86, P5 5:29.84,
+  P1 (No Profile) 5:36.56. Returning to mode selection succeeded without a
+  runtime trap. Sustained six-view performance was approximately 52-58 fps
+  in this run; performance depends on the PC and track.
+* Six physical controllers have not been available for a hardware test; the
+  acceptance scripts inject independent controller states through the same
+  C conversion and guest input-port path used by real browser controllers.
+
+Menu-flow validation (2026-11-03)
+--------------------------------
+* Native main-menu Split Screen option and 2/3/4 icon carousel visibly checked.
+* Two-player flow: five race assertions passed, with separate Peugeot/Focus
+  selections; count-menu cancel/re-entry and backing from P2 to P1 also passed.
+* Three-player flow: seven assertions passed, including separate Peugeot,
+  Focus and Corolla selections and independent throttles.
+* Four-player flow: nine assertions passed; four Start joins and car picks reached the
+  same shared-engine race (Peugeot, Focus, Corolla, 240SX).
+* Leaving the carousel restores Quick Race mode 2 and frontend player 0.
+  Its single-player race test stopped during loading: this installation lacks
+  CARS/PEUGOT106 assets requested for an AI opponent. Split Circuit tests
+  above use only the selected local cars and complete successfully.
+* Browser local-pad ownership/join-counter tests and viewport assertions pass.
+* TypeScript check, production bundle and WASM build pass.
+These are synthetic-controller acceptance tests; physical pads still need
+hardware verification. Screenshots are in out/windows/validation/menu-*.png.
+
+Current menu flow
+-----------------
+Main Menu > Split Screen > native icon carousel (2 / 3 / 4 Players) >
+Mode > Track > Race Options > Player 1 Start / Car / Transmission >
+Player 2 Start / Car / Transmission > remaining players > Race.
+Quick Race stays single-player. The count submenu reuses the main carousel
+and the console Split Screen icon. Each seat retains its own car and gearbox.
+The Windows launcher uses localPlayers=2 to enable local input and offline
+network settings; the actual count is chosen in the native game menu.
+The count carousel handles keyboard Escape and controller B as Back. Its native
+position bar uses the active carousel's range and explicit track/thumb opacity,
+including after returning to the main menu. split_count_back.txt checks
+all three positions, both Back inputs, reopening and continuing with four.
+Back from split-screen mode selection waits for native setup cleanup, then
+reopens player-count selection with the previous count highlighted. A second
+Back returns to the main menu. split_mode_back.txt covers Escape, controller B
+and changing the count before re-entering mode selection. Starting a race clears
+this pending setup return so quitting a race still reaches the main menu.
+The count screen uses the native S_GROUP INIT entrance fade. Initial entry
+is applied on the next frontend tick, after Accept queues its parent exit,
+so the content swap and entrance happen together. Returning from mode setup
+and returning to main play the same entrance once; the old two-tick reveal
+restart is removed. split_menu_fade.txt captures early and settled frames.
+Player count uses the Quick Race heading (left alignment, 0.8 scale), hides
+the main-menu logo, and exposes native Back/Continue help buttons. These
+properties are restored when leaving the selector. Intercepted Accept/Back
+actions use IconScrollerMenu event slots 8/10 and its current sound style,
+through the original frontend sound manager (confirm 4 / back 5).
+Outrun is capped at two. The shared-engine arrays retain six-seat capacity;
+the requested public menu exposes two, three and four players.
+Each viewport now has an independently centered minimap in its lower-left
+corner. Local racers keep the same green/red/blue/yellow/purple/cyan colors
+on every map, including clamped edge markers for distant cars. Per-pad
+vibration is not implemented.
+
+Per-player minimaps
+------------------
+runtime/split_minimap.inc ports the ASI's native map snapshots and extra car
+entities. The manager updates once for each local car, snapshots FE data, and
+renders each map in its cell. Map groups keep a neutral parent transform so
+cached FE matrices cannot move another player's map. Extra car entities are
+detached before their cloned HUD packages are destroyed or the map is rebuilt.
+The distance filter exempts local racers while retaining native edge clamping.
+Player arrows follow native HUD visibility, including pause-menu hiding.
+tests/web/scripts/split_minimap_{two,three,four}.txt exercise the layouts,
+independent input and two-/three-player restarts. Set env=NFSU2_SPLIT_MAP_TEST=1:
+0xd0d000 reports map count; 0xd0d010..24 report the actual player-marker draw
+mask for each map. These diagnostics are disabled in ordinary play.
+
+Rebuild and repeat tests
+-----------------------
+Sync changed files to the WSL copy. Regenerate after changing overrides,
+HOOK_SITE addresses or the lifter:
+  bash web/gen.sh '/mnt/c/Games/Need for Speed Underground 2/SPEED2.EXE'
+  J=8 bash web/build.sh
+  cd web && npm run check && npm run build
+
+Start the local development server with --dev and --artifacts, then use:
+  ?save=split-menu-test&env=NOMOVIES=1&env=NFSU2_NET=off&env=NFSU2_FNG_LOG=1&script=/tests/web/scripts/split_menu_four.txt&artifacts=/artifacts/
+
+Current acceptance scripts are split_menu_two.txt, split_menu_three.txt,
+split_menu_four.txt and split_menu_single.txt. Count, separate ride types and
+per-seat throttles are asserted. The two-player script also exercises Back.
+The earlier split_two/six/finish scripts document pre-menu engine validation;
+their old Quick Race entry path predates this separate Split Screen menu.
+
+Lighting and keyboard update (2026-11-03)
+---------------------------------------
+* Ported native streak-camera substitution (0x5CBC02), accumulation-region
+  isolation for both streak surfaces, full-screen AA history-copy exception,
+  and per-cell composite UV remapping. Reflection/blur targets stay local.
+* Two- and four-player screenshots now show each camera's own tail-light and
+  street-light glows. Four-view camera IDs 1/2/5/6 were logged independently;
+  all nine four-player car/input assertions passed. Two-player rendering was
+  checked with overbright enabled and with the streak-only composite.
+* Enter at a player's join prompt claims the one keyboard seat. Subsequent
+  controllers keep their Start order without consuming the keyboard's slot.
+  Keyboard car selection uses the game's normal messages; racing uses a
+  separate input record, with arrows/WASD, Space handbrake, Shift nitrous,
+  C camera, B look back and Q/E manual shifting. The virtual input device
+  stays available while the keyboard owns a seat, even without a live pad.
+* split_keyboard.txt checks Enter joining, separate car choices, W and arrow
+  acceleration, release to neutral and independent controller throttle.
+* Six browser seat/viewport tests and the WASI input test (2100 keystrokes)
+  pass. These remain automated inputs, not physical-controller validation.
+* Captures: out/windows/validation/lights-before and lights-after.
+* Final mixed-input run: all 10 assertions passed, including continued keyboard acceleration and release after disconnecting the legacy controller; no browser errors.
+
+Per-player road and car reflections (2026-11-03)
+----------------------------------------------
+* runtime/split_reflections.inc ports the ASI road-reflection and environment
+  map passes. Each extra player gets a 320x240 road target, re-culled from
+  that player's camera; the reflection projection matches the player's cell.
+  Reflected local cars also use the correct player/racer. The matching road
+  texture is selected before each main view and P1's restored afterward.
+* Each extra player has a six-face car environment cube. All are initialized
+  before first display, then one extra player's cube refreshes per frame.
+  Face copies into the game's cube are ordered before that player's draws.
+* Fixed browser COM cube-surface face metadata and WebGPU cube-face copies;
+  copies now preserve the actual 1..6 face selector instead of flattening it.
+* Extra textures/surfaces are released with the game's render targets.
+* Three-player wet-road run: seven car/input assertions passed, separate
+  textures/cameras/cubes logged for P2/P3, and distinct road scenes inspected
+  after the cars separated. No browser rendering errors; about 89 fps in the
+  recorded end-of-test sample (hardware/track dependent).
+* WASM build, TypeScript check and production bundle passed; six local input
+  and viewport unit tests passed. Tests use simulated controllers.
+* Acceptance: split_reflections.txt (3P), split_reflections_two.txt (2P/restart).
+  Captures: out/windows/validation/reflections.
+* Two-player wet-road/restart run: all eight assertions passed; wide-view reflections remained aligned after restart, with no browser errors.
+
+Remaining per-camera effects (2026-11-03)
+---------------------------------------
+* Speed blur now selects each player's camera, retains a separate smoothed
+  strength and copies only that player's physical backbuffer rectangle.
+  The full scene copy is restored for the frame-end post-processing chain.
+* Headlight projector view 9 is re-aimed and re-culled for each player. The
+  browser records immutable, aligned headlight blocks per draw instead of
+  letting the last camera overwrite the lights for every earlier draw.
+* GPU protocol version 7 gives draw records their headlight-block offset and
+  normalized post-effect clip. Rasterization intersects the camera viewport,
+  UI clip and effect region, including downsampled brightness targets.
+* Rain and lens drops use each camera's rain object. The existing high-frame-
+  rate and forced-weather handling is preserved. Weather-cache indices are
+  bounded for extra player views, and rain follows their own racer.
+* The effect-update loop includes all active players. Extra views create
+  their own car glares and retain separate sunrise/night tint cache state.
+* Nitrous brightness uses per-player smoothing, thresholds and accumulation
+  factors; full-screen post quads are clipped without changing their UVs.
+* Validation: WASM and production web builds, TypeScript, 109 GPU protocol
+  layout values, and eight viewport/input unit tests pass. Wet-weather runs
+  passed 8 assertions for two players plus restart, 9 for three players and
+  9 for four players, without browser GPU errors. Controllers are simulated.
+* New regression: tests/web/scripts/split_effects.txt drives P1 while P2/P3
+  remain idle, then holds P1's handbrake while P3 drives. Captures are under
+  out/windows/validation/effects. Individual graphics settings, custom
+  headlight colours and six-player gameplay were not exhaustively retested.
+
+The count selector removes UI_Main's 16-unit logo band: scrollbar, carousel,
+selection frame and label move up together, and the outer panel shrinks.
+Saved native geometry is restored on exit; reopening does not accumulate offsets.
