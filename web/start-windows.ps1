@@ -2,14 +2,15 @@ param(
     [string]$Data = 'C:\Games\Need for Speed Underground 2',
     [string]$Distribution = 'Ubuntu',
     [string]$LinuxRepo = '/root/nfsu2-ep',
-    [ValidateRange(1024, 65535)][int]$Port = 8080
+    [ValidateRange(1024, 65535)][int]$Port = 8080,
+    [ValidateRange(1, 6)][int]$Players = 2
 )
 $ErrorActionPreference = 'Stop'
 try {
     if (!(Test-Path -LiteralPath (Join-Path $Data 'SPEED2.EXE'))) {
         throw "SPEED2.EXE was not found in $Data. Pass -Data with your game folder."
     }
-    $url = "http://localhost:$Port/"
+    $url = "http://localhost:$Port/?localPlayers=$Players"
     function Test-GameServer {
         try {
             # WSL forwards this listener over IPv4. Avoid localhost's IPv6
