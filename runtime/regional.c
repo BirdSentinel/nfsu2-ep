@@ -26,6 +26,23 @@
 #include "cpu.h"
 #include "widescreen.h"           /* HOOK_SITE */
 #include <stdio.h>
+#include <sys/stat.h>
+
+extern int fileio_resolve_game(const char *, char *, size_t);
+
+/* Retail North American folders do not include these optional cars. Never
+ * offer them to the player or AI unless their required assets are present. */
+static int regional_assets_present(void){
+    const char *cars[] = { "CORSA", "PEUGOT106" };
+    const char *files[] = { "GEOMETRY.BIN", "TEXTURES.BIN", "VINYLS.BIN" };
+    for (unsigned c = 0; c < 2; c++) for (unsigned f = 0; f < 3; f++){
+        char win[128], path[1024]; struct stat st;
+        snprintf(win, sizeof win, "CARS\\%s\\%s", cars[c], files[f]);
+        if (!fileio_resolve_game(win, path, sizeof path) || stat(path, &st) || !S_ISREG(st.st_mode) || st.st_size <= 0)
+            return 0;
+    }
+    return 1;
+}
 
 #define LOCKED_NA       0x007f7c48u   /* 2 car types region 0 does not sell */
 #define AI_CARS_NA      0x007f6da4u   /* region 0's AI car types, a byte each */
@@ -36,6 +53,10 @@
 static int g_on;
 
 void regional_install(void){
+    if (!regional_assets_present()){
+        fprintf(stderr, "[cars] optional Corsa/106 assets absent: keeping the North American car lists\n");
+        return;
+    }
     /* only on the data of the exe this port is made for */
     if (MR32(LOCKED_NA) != T_CORSA || MR32(LOCKED_NA + 4u) != T_PEUGOT106
         || MR8(AI_CARS_NA + AI_CARS_NA_N - 2u) != 5u || MR8(AI_CARS_NA + AI_CARS_NA_N - 1u) != 18u

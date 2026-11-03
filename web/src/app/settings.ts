@@ -150,6 +150,7 @@ export const KEYS: readonly KeyDef[] = [
   { key: 'online', env: 'NFSU2_ONLINE', kind: 'bool', scope: 'web' },
   // each profile's Save option set to Autosave once, before Play (the page's own: profile.ts turnOnAutosave)
   { key: 'autosave', env: 'NFSU2_AUTOSAVE', kind: 'bool', scope: 'web' },
+  { key: 'unlock_everything', env: 'NFSU2_UNLOCK_EVERYTHING', kind: 'bool', scope: 'web' },
   // the game's language (runtime/language.c; the page fetches ahead only its language pack: datacache.ts).  Not in
   // bundle.m's table: there a lower-case key, so it reaches the runtime as NFSU2_LANGUAGE all the same
   { key: 'language', env: 'NFSU2_LANGUAGE', kind: 'enum', vals: LANGUAGES.join('|'), scope: 'web' },
@@ -230,6 +231,10 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 # game's Options, Gameplay, Save and that choice stays.  off = profiles keep
 # what the game has.  [NFSU2_AUTOSAVE]
 #autosave = on
+
+# Unlock cars, customization parts and events for this session. Off restores
+# normal progression checks on the next game start. [NFSU2_UNLOCK_EVERYTHING]
+#unlock_everything = off
 
 # The career's 33 hidden races on the world map and the radar like the
 # others, as MaxHwoy's Show Hidden Races Mod (nfsmods.xyz/mod/1583) has

@@ -1,0 +1,6 @@
+Ide masolj PNG, JPG vagy JPEG kepeket. Almapparendszer is hasznalhato.
+Az Open-Vinyl-Studio.cmd inditasakor a kepek bekerulnek a szerkeszto keptaraba.
+Ha kozvetlenul az index.html-t nyitod meg, a Mappa betoltese gombbal olvasd be ezt a mappat.
+A JPG hattere nem atlatszo. PNG-t hasznalj kivagott matricakhoz.
+128 kep, kepenkent 32 MB, a mappabetolto inditonal osszesen 64 MB a korlat.
+A bongeszoben a dekodolt keptar tovabbi meretkorlatja 24 millio keppont.

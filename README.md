@@ -35,8 +35,14 @@ The generated C and the compiled module are made from the game, so they are neve
 
 ## Play
 
-On Windows, the WSL build can be opened with `Play-Egyuttparkolas.cmd` after
-compilation. See [the Windows launcher instructions](docs/web/WINDOWS.md).
+For a standalone Windows app you can copy to a USB drive, see
+[Portable Windows app](docs/web/PORTABLE.md). The portable folder bundles Electron,
+the compiled game and your game files, and keeps saves beside the executable.
+The target computer needs no installation or WSL.
+
+On Windows, `Play-Egyuttparkolas.cmd` opens the packaged standalone app.
+The older WSL/browser workflow remains available through `web/start-windows.ps1`;
+see [the Windows launcher instructions](docs/web/WINDOWS.md).
 
 ```sh
 web/start.sh --data "/path/to/Need for Speed Underground 2"

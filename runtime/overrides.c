@@ -1538,7 +1538,7 @@ static int jdlz_native(uint32_t blk, uint32_t out){
     }
     return 1;
 }
-void sub_00574670(CPU *restrict c){
+static void decompress_block(CPU *restrict c){
     static int verify = -1;
     if (verify < 0){ const char *e = getenv("NFSU2_JDLZ_VERIFY"); verify = e && *e == '1'; }
     uint32_t e = c->esp, blk = MR32(e + 4u), out = MR32(e + 8u);
@@ -1562,6 +1562,21 @@ void sub_00574670(CPU *restrict c){
         }
     }
     sub_00574670_orig(c);
+}
+
+void sub_00574670(CPU *restrict c){
+#ifdef __wasi__
+    uint32_t blk = MR32(c->esp + 4u), out = MR32(c->esp + 8u), size = 0;
+    if (blk && out && range_committed(blk, 16) &&
+        (MR32(blk) == JDLZ_TAG || MR32(blk) == 0x46465548u)) size = MR32(blk + 8u);
+#endif
+    decompress_block(c);
+#ifdef __wasi__
+    if (size == 350748u && range_committed(out, size)) {
+        extern void vinyl_png_decoded(uint32_t, uint32_t);
+        vinyl_png_decoded(out, size);
+    }
+#endif
 }
 
 /* --- sub_0061b980: NewGetCarPart(type, slot, key, previous, level), thiscall

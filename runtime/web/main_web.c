@@ -80,6 +80,13 @@ int main(int argc, char **argv){
 
     mem_init();
     if (mem_load_pe(exe)) return 1;
+    /* Retail game's unlock-all debug flag: session-only, never edits the
+     * profile's progression. A fresh process restores the original byte. */
+    { const char *unlock = getenv("NFSU2_UNLOCK_EVERYTHING");
+      if (unlock && !strcmp(unlock, "1")) {
+          MR8(0x00838464u) = 1;
+          fprintf(stderr, "[game] unlock everything enabled\n");
+      } }
     /* Six-player tables must exist before the guest static constructors. */
     mem_commit(SPLIT_PLAYERS_INDEX, 0x10000u);
     memset(g_mem + SPLIT_PLAYERS_INDEX, 0, 0x10000u);
