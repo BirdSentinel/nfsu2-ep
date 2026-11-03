@@ -1,0 +1,7 @@
+{
+  "name": "egyuttparkolas-portable",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": { "test": "node --test server.test.cjs vinyls.test.cjs" }
+}

@@ -71,6 +71,7 @@ const GROUPS: Group[] = [
     { key: 'roam_crew', label: N('Crews'), help: N('Players with the same crew name always see each other in free roam, with names and map arrows in the crew\'s colour. Anyone who types the name joins. Up to 4 crews.'), c: { t: 'crews', placeholder: N('Crew name') } },
   ] },
   { title: N('Game'), more: N('More game settings'), items: [
+    { key: 'unlock_everything', label: N('Unlock everything'), help: N('Unlock cars, customization parts and events. Applies when you next start the game. Off restores normal unlock requirements; saved customizations remain.'), c: { t: 'switch' } },
     { key: 'language', label: N('Language'), help: N('Menus, subtitles, dubbed voices and this page.'), c: { t: 'select', opts: LANGUAGE_OPTS } },
     { key: 'movies', label: N('Movies'), help: N('Intro and story movies.'), c: { t: 'switch' } },
     { key: 'subtitles', label: N('Subtitles'), help: N('For the movies. English uses VileStuff\'s English Subtitles Fixed.'), link: { text: N('English Subtitles Fixed'), href: 'https://nfsmods.xyz/mod/5286' }, c: { t: 'switch' } },

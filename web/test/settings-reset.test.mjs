@@ -16,6 +16,14 @@ const entry = `export * from './web/src/app/settings.ts'; export * as UI from '.
 const js = (await esbuild.build({ stdin: { contents: entry, resolveDir: ROOT, loader: 'ts' }, bundle: true, format: 'esm', write: false, platform: 'neutral' })).outputFiles[0].text;
 const S = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 
+test('unlock everything persists on/off and resets to normal progression', () => {
+  const enabled = S.settingsPut(S.TEMPLATE, 'unlock_everything', 'on');
+  assert.equal(S.resolveEnv(enabled, {}, {}).env.NFSU2_UNLOCK_EVERYTHING, '1');
+  const disabled = S.settingsPut(enabled, 'unlock_everything', 'off');
+  assert.equal(S.resolveEnv(disabled, {}, {}).env.NFSU2_UNLOCK_EVERYTHING, '0');
+  assert.notEqual(S.resolveEnv(S.UI.resetAll(enabled), {}, {}).env.NFSU2_UNLOCK_EVERYTHING, '1');
+});
+
 // the player's file from the report (2026-10-24): the panel's old Car memory pool row left roam_carpool_kb = 11000
 const player = () => {
   let ini = S.TEMPLATE;

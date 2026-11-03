@@ -1,10 +1,13 @@
 # Playing on Windows through WSL
 
+For the standalone Electron app with no WSL or browser installation on the
+target PC, use the [portable Windows build](PORTABLE.md).
+
 The browser runs on Windows. The existing Linux build and local Rust server run
 inside Ubuntu on WSL 2. This is not a standalone Windows executable.
 
-After the first build, double-click `Play-Egyuttparkolas.cmd` at the repository
-root. It starts the server if needed and opens Chrome (or the default browser)
+For the legacy WSL/browser workflow, run `web/start-windows.ps1` from PowerShell.
+It starts the server if needed and opens Chrome (or the default browser)
 at `http://localhost:8080/?localPlayers=2`. Press **Play** on the page. The server continues
 running when the browser closes, so opening the launcher again is quick.
 
