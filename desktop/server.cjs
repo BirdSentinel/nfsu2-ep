@@ -28,7 +28,23 @@ function inventory(root, game = false) {
 }
 
 async function startServer(root, port = 18742, decodePNG, online) {
+  function prepareIntro(data) {
+    const file = path.join(root, 'custom', 'intro.png');
+    if (!decodePNG || !fs.existsSync(file)) return;
+    try {
+      const rgba = decodePNG(fs.readFileSync(file), 1024, 1024);
+      if (rgba.length !== 1024 * 1024 * 4) throw Error('Unexpected intro pixel size');
+      const buffer = Buffer.alloc(rgba.length);
+      for (let i = 0; i < rgba.length; i += 4) {
+        buffer[i] = rgba[i + 2]; buffer[i + 1] = rgba[i + 1]; buffer[i + 2] = rgba[i]; buffer[i + 3] = 255;
+      }
+      const p = 'GLOBAL/custom-intro.bgra';
+      data.files.set(p.toLowerCase(), { buffer, size: buffer.length });
+      data.entries.push({ p, s: buffer.length, m: fs.statSync(file).mtimeMs / 1000 });
+    } catch (e) { console.warn(`Custom intro could not be loaded: ${e.message}`); }
+  }
   let data = inventory(path.join(root, 'game'), true);
+  prepareIntro(data);
   const vinylNotes = decodePNG ? prepareVinyls(data, decodePNG) : [];
   const web = inventory(path.join(root, 'web'));
   let manifest = JSON.stringify({ localFiles: true, files: data.entries, blocks: { url: '/data-blocks/', size: BLOCK, max: 8 } });
@@ -89,6 +105,7 @@ async function startServer(root, port = 18742, decodePNG, online) {
   server.vinylNotes = vinylNotes;
   server.refreshVinyls = () => {
     const next = inventory(path.join(root, 'game'), true);
+    prepareIntro(next);
     const notes = decodePNG ? prepareVinyls(next, decodePNG) : [];
     data = next;
     manifest = JSON.stringify({ localFiles: true, files: data.entries, blocks: { url: '/data-blocks/', size: BLOCK, max: 8 } });

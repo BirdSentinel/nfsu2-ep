@@ -147,6 +147,8 @@ pub const CREWS: usize = wire::CREWS;
 /// 0.5 s).  A value that is not a positive number keeps its default.
 #[derive(Clone, Debug)]
 pub struct RoamOptions {
+    /// Standalone small servers: put all players in public room zero, without crews.
+    pub shared_session: bool,
     /// the most links a player has (what its HELLO asks for under it; 32 at most for a core before version 10)
     pub degree: usize,
     pub tick_ms: u64,
@@ -193,6 +195,7 @@ pub struct RoamOptions {
 impl Default for RoamOptions {
     fn default() -> Self {
         RoamOptions {
+            shared_session: false,
             degree: 48,
             tick_ms: 500,
             stale_ms: 60_000.0,

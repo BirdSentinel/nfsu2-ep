@@ -65,7 +65,8 @@ html[data-touch] .key-only, html:not([data-touch]) .touch-only { display: none; 
    line along its bottom edge */
 .top { grid-column: 1 / -1; position: relative; overflow: hidden; background: var(--frame); border-radius: 12px; padding: 24px; }
 .top-row { display: flex; align-items: center; gap: 16px 24px; }
-.brand { flex: 1 1 auto; min-width: 0; }
+.brand { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 14px; }
+.brand-logo { width: 56px; height: 56px; flex: 0 0 auto; object-fit: contain; }
 .brand h1 { font-size: 28px; line-height: 32px; }
 .brand .hint { margin-top: 4px; text-wrap: balance; }
 .top-end { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

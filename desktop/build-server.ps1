@@ -11,7 +11,7 @@ if ($Python) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not embed the server icon.' }
 }
 if (!(Test-Path -LiteralPath (Join-Path $Output 'server.json'))) {
-  [IO.File]::WriteAllText((Join-Path $Output 'server.json'), '{"bind":"0.0.0.0","port":8080,"max_players":128}', [Text.UTF8Encoding]::new($false))
+  [IO.File]::WriteAllText((Join-Path $Output 'server.json'), '{"bind":"0.0.0.0","port":8080,"max_players":49}', [Text.UTF8Encoding]::new($false))
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/web/ONLINE-SERVER.md') -Destination (Join-Path $Output 'READ-ME.md') -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $Output 'LICENSE.txt') -Force

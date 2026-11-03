@@ -24,23 +24,26 @@ function testPNG(noisy) {
   return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', ihdr), chunk('IDAT', require('node:zlib').deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64');
 }
 async function until(fn) { for (let i = 0; i < 150; i++) { const result = await fn(); if (result) return result; await sleep(40); } throw Error('Timed out'); }
-test('native Windows host: two local clients exchange game packets without any game assets on the host', { timeout: 25000 }, async () => {
+test('standalone host: two local clients exchange game packets and custom skins without game assets', { timeout: 25000 }, async () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ep-native-host-'));
   const executable = path.join(folder, 'Egyuttparkolas-Server.exe');
-  fs.copyFileSync(path.resolve('web/server-rs/target/x86_64-pc-windows-gnu/ci/egyuttparkolas-server.exe'), executable);
-  fs.writeFileSync(path.join(folder, 'server.json'), JSON.stringify({ bind: '127.0.0.1', port: 19843, max_players: 16 }));
-  const host = spawn(executable, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-  let log = ''; host.stdout.on('data', b => log += b); host.stderr.on('data', b => log += b);
+  const external = process.env.EP_SERVER_TEST_URL;
+  const port = Number(process.env.EP_SERVER_TEST_PORT || 19843);
+  const endpoint = external || `http://127.0.0.1:${port}`;
+  if (!external) fs.copyFileSync(path.resolve('web/server-rs/target/x86_64-pc-windows-gnu/ci/egyuttparkolas-server.exe'), executable);
+  fs.writeFileSync(path.join(folder, 'server.json'), JSON.stringify({ bind: '127.0.0.1', port, max_players: 16 }));
+  const host = external ? null : spawn(executable, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  let log = ''; host?.stdout.on('data', b => log += b); host?.stderr.on('data', b => log += b);
   const peers = [], servers = [], proxies = [];
   try {
-    await until(async () => { try { return (await fetch('http://127.0.0.1:19843/health')).ok; } catch { return false; } });
-    assert.equal((await fetch('http://127.0.0.1:19843/data/SPEED2.EXE')).status, 404);
-    assert.equal((await fetch('http://127.0.0.1:19843/game.wasm')).status, 404);
-    assert.equal((await fetch('http://127.0.0.1:19843/players', { headers: { origin: 'https://evil.example' } })).status, 403);
+    await until(async () => { try { return (await fetch(endpoint + '/health')).ok; } catch { return false; } });
+    assert.equal((await fetch(endpoint + '/data/SPEED2.EXE')).status, 404);
+    assert.equal((await fetch(endpoint + '/game.wasm')).status, 404);
+    assert.equal((await fetch(endpoint + '/players', { headers: { origin: 'https://evil.example' } })).status, 403);
     for (let i = 0; i < 2; i++) {
       const root = path.join(folder, `client${i}`); fs.mkdirSync(path.join(root, 'game'), { recursive: true }); fs.mkdirSync(path.join(root, 'web'));
       fs.writeFileSync(path.join(root, 'game/SPEED2.EXE'), `local-${i}`);
-      const proxy = createOnline(() => 'http://127.0.0.1:19843'); proxies.push(proxy);
+      const proxy = createOnline(() => endpoint); proxies.push(proxy);
       const server = await startServer(root, 0, undefined, proxy); servers.push(server);
       const origin = `http://127.0.0.1:${server.address().port}`;
       const ws = new WebSocket(origin.replace('http:', 'ws:') + '/lan', { origin });
@@ -82,7 +85,7 @@ test('native Windows host: two local clients exchange game packets without any g
     for (const peer of peers) peer.ws.terminate();
     for (const proxy of proxies) proxy.close();
     for (const server of servers) { server.closeAllConnections(); await new Promise(r => server.close(r)); }
-    host.kill(); await new Promise(r => host.exitCode !== null ? r() : host.once('exit', r));
+    if (host) { host.kill(); await new Promise(r => host.exitCode !== null ? r() : host.once('exit', r)); }
     fs.rmSync(folder, { recursive: true, force: true });
   }
 });

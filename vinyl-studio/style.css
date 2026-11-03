@@ -55,3 +55,5 @@ img,a{-webkit-user-drag:none}
 .library-panel,.layer-panel{padding-top:14px}
 .library-panel>h2,.layer-panel>.panel-title h2{margin-top:0}
 @media(max-width:1150px){.library-panel,.layer-panel{padding-top:10px}}
+
+.export-result{margin-top:18px;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--panel);overflow-wrap:anywhere}.export-result[data-state=success]{border-color:var(--accent)}.export-result p{margin:0}.export-result #exportLocation{margin-top:12px}.export-result strong{color:var(--accent-text)}.export-result #exportLocation p{margin-top:6px;font-size:13px}

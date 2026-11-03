@@ -14,6 +14,9 @@ export interface PlayerCounts {
 }
 
 import { count, live, onLanguage, t, tn, type Msg } from './i18n';
+import { desktopConnection } from './desktop';
+
+const connectionHelp: Msg = () => 'To play online, open Online → Connection, enable Play online, enter the Server address, then click Save & reload launcher. Without a working server connection, you can only play offline.';
 
 const EVERY_MS = 15_000;
 
@@ -101,10 +104,16 @@ export class PlayersPanel {
     onLanguage(() => this.draw());
     // (a line may break after the slash: races/ lobbies, not races/lob-bies)
     live(root.querySelector('#players-online-label')!, () => t('in races/lobbies').replace(/\//g, '/\u200b'));
+    if (desktopConnection()) this.offline(connectionHelp);
   }
 
   /** the server's answer; null: a server without the route (no panel) */
   show(c: PlayerCounts | null) {
+    const connection = desktopConnection();
+    if (connection && (!connection.online || !connection.server || !c)) {
+      this.offline(connectionHelp);
+      return;
+    }
     this.root.hidden = !c;
     this.last = c;
     this.draw();
@@ -116,10 +125,11 @@ export class PlayersPanel {
     this.root.hidden = false;
     this.last = null;
     this.draw();
-    this.note(why);
+    this.note(desktopConnection() ? connectionHelp : why);
   }
 
   private draw() {
+    this.root.querySelector<HTMLElement>('.stats')!.hidden = !!desktopConnection() && !this.last;
     const c = this.last, n = (id: string, k: number | null | undefined) => { this.root.querySelector(id)!.textContent = countText(k); };
     n('#players-all', c && Number.isInteger(c.players) ? c.players : null);
     n('#players-roam', c?.roam);

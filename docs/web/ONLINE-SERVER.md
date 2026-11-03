@@ -21,8 +21,11 @@ A launcher **Online → Connection** részén:
    - interneten: `http://A-SZERVER-NYILVÁNOS-IP-CÍME:8080` vagy a rá mutató domain.
 3. **Test connection**, majd **Save & reload launcher**, végül **Play**.
 
-A közös városi autózáshoz az Online fülön kapcsold be a **Free roam with others** opciót is.
-Minden játékos ugyanahhoz a szerverhez csatlakozzon; ha szobát adtok meg, az is egyezzen.
+Online módban a közös free roam automatikusan bekapcsol. Minden játékos ugyanahhoz
+a szerverhez csatlakozzon, majd lépjen be a játék karrier free-roam módjába. Nincs
+külön szoba, barátlista vagy crew: legfeljebb 49 játékos osztozik egy sessionön.
+A menüben, üzletben vagy külön versenyben lévő játékos autója csak visszatéréskor látható.
+Minden játékosnak a frissített kliens szükséges; a régi szobabeállításokat az új kliens figyelmen kívül hagyja.
 Az online mód ablakonként egy játékost használ. Ugyanazon a gépen az `Egyuttparkolas.exe`
 ismételt indításával új kliensablak nyílik, külön mentési profillal és játékosazonosítóval.
 Az új profil első induláskor átveszi az első kliens szervercímét; a játékosoknak adj eltérő neveket.
@@ -33,7 +36,7 @@ offline egyjátékos / helyi osztott képernyős módhoz. Szervert csak a játé
 
 A játékfájlokat a kliens továbbra is a saját `game` mappájából olvassa. Az online szerver
 csak a többjátékos adatokat közvetíti. A klienseken egyező játékverziót használjatok.
-A saját PNG vinyleket ez a kapcsolat nem tölti át automatikusan a többi játékoshoz.
+Az egyedi vinyleket automatikusan továbbítja a többi játékosnak.
 
 ## Elérés más gépekről
 
@@ -51,7 +54,7 @@ ha a szerver elé saját TLS reverse proxyt teszel; a proxy továbbítsa a WebSo
 A `server.json` fájlban módosítható a port és a játékoskorlát. Állítsd le a szervert a szerkesztés előtt:
 
 ```json
-{"bind":"0.0.0.0","port":8080,"max_players":128}
+{"bind":"0.0.0.0","port":8080,"max_players":49}
 ```
 
 A `state` mappát a szerver hozza létre maga mellett. Ebben vannak az online statisztikák,

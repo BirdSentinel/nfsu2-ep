@@ -669,6 +669,7 @@ fn sanitize(o: RoamOptions) -> RoamOptions {
     let n = |v: usize, d: usize| if v > 0 { v } else { d };
     let f = |v: f64, d: f64| if v.is_finite() && v > 0.0 { v } else { d };
     RoamOptions {
+        shared_session: o.shared_session,
         // (roam_core reads a list of RC_MAX_PEERS at most)
         degree: n(o.degree, d.degree).min(wire::LINKS_MAX),
         tick_ms: if o.tick_ms > 0 { o.tick_ms } else { d.tick_ms },
@@ -1258,7 +1259,7 @@ impl Hub {
                     p.watch.reset();
                 }
                 p.id = sender;
-                p.room = room;
+                p.room = if self.o.shared_session { 0 } else { room };
                 p.status = status;
                 if !matches!(status, 2 | 5) {
                     p.watch.reset();
@@ -1277,12 +1278,12 @@ impl Hub {
                 }
                 check = true;
                 // the links it wants (core 10), the hub's most at most; a core before reads lists of 32 at most
-                p.degree = if core >= 10 && links > 0 { (links as usize).min(degree) } else { degree.min(wire::LINKS_V9) };
+                p.degree = if self.o.shared_session && core >= 10 { degree } else if core >= 10 && links > 0 { (links as usize).min(degree) } else { degree.min(wire::LINKS_V9) };
                 p.lobbies = lobbies;
                 p.marks = marks;
                 p.duel = duel;
                 let was = p.crews[0] != 0;
-                p.crews = distinct(crews);
+                p.crews = if self.o.shared_session { [0; wire::CREWS] } else { distinct(crews) };
                 crewed = Some((was, p.crews[0] != 0));
             }
             Msg::Snap { sender, status, p: pos, v, heading, t_us, clock } if sender == p.id => {
@@ -1850,6 +1851,7 @@ impl Hub {
     /// browser `vip`'s page blocks these players, by the name over their car (`Block`): logged, so that the operator
     /// sees who many block
     pub fn blocks(&mut self, vip: u32, names: Vec<String>) {
+        if self.o.shared_session { return; }
         let list: Vec<String> = names.iter().map(|n| format!("{n:?}")).collect();
         (self.log)(&format!("[roam] {} blocks {}", vip_str(vip), list.join(", ")));
         let mut b = Block::new(&names);

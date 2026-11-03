@@ -215,37 +215,20 @@ void sub_00566020(CPU *c){
     sub_00566020_orig(c);
 }
 
-/* ---- the title's second line ----------------------------------------------
- * The title screen (UG_LS_Splash.fng) has EA's copyright in a band at the
- * bottom: string 0xC70CCFC7, a top-level object centred at (0, 194) in HUD
- * units (640 x 480 about the centre), size 0.9, in the band (group 0x356DE316
- * at y 195.5: two images 40 high).  Under it goes the site's address, in a
- * copy of that string (optslider.c's fe_copy) 12 units lower at 3/4 of its
- * size, inside the band, made each time the package is loaded (the title
- * comes back after its attract movie: a new package, a new copy).  The copy's
- * animation (the copyright's, cloned) puts it back where the copyright is, so
- * every frame it gets its place and size again, and the colour of "Press
- * Enter Key" (string 0xC4DF3FF2, the game's green) with the copyright's
- * alpha: it fades in and out with the copyright.  An object's drawing data (+0x2C):
- * colour (b, g, r, a ints) +0, position +0x1C, size +0x38; a change sets its
- * rebuild flag (+0x1C 0x400000), as FEng's setters do (menusize.c). */
+/* ---- title copyright: keep the game's placement, font and animation ----- */
 const char *autotest_top_fng(void);
 void dispatch_indirect(CPU *c, uint32_t addr);
-uint32_t fe_copy(CPU *c, uint32_t pk, uint32_t o, uint32_t hash);
 
 #define TITLE_FNG     "UG_LS_Splash.fng"
-#define TITLE_LINE    "nfsu2.xyz"
-#define LINE_DY       12.f          /* HUD units under the copyright's centre */
-#define LINE_SIZE     0.75f         /* of the copyright's size */
+/* The game consumes single-byte Western text, not UTF-8. */
+#define TITLE_COPYRIGHT "\251 2026 Egy\374ttParkol\341s. All rights reserved."
 #define H_COPYRIGHT   0xc70ccfc7u
-#define H_PRESS       0xc4df3ff2u   /* "Press Enter Key" (its group slides in) */
-#define FN_NEW        0x00575620u   /* cdecl (size): operator new */
-#define FN_FE_HASH    0x00505450u   /* cdecl (name) -> an FE object name's hash */
-#define FN_FE_PACKAGE 0x0052cef0u   /* cdecl (package name) -> FEPackage*, 0: not loaded */
-#define FN_PKG_FIND   0x00517f80u   /* thiscall package (hash) -> its object, 0: none */
-#define FN_FE_SETSTR  0x00535fe0u   /* thiscall string object (char*): its text */
+#define FN_NEW        0x00575620u
+#define FN_FE_PACKAGE 0x0052cef0u
+#define FN_PKG_FIND   0x00517f80u
+#define FN_FE_SETSTR  0x00535fe0u
 
-static struct { uint32_t scr, hash; int off; } g_tl;
+static struct { uint32_t scr; int off; } g_tl;
 
 /* a guest function with ecx and stack arguments, the CPU as it was after */
 static uint32_t gcall(CPU *c, uint32_t fn, uint32_t ecx, int n, const uint32_t *arg){
@@ -274,38 +257,17 @@ void intro_frame(CPU *c){
     if (!g_tl.scr){
         uint32_t n = 64u;
         if (!(g_tl.scr = gcall(c, FN_NEW, 0, 1, &n))){ g_tl.off = 1; return; }
-        uint32_t a = gstr(g_tl.scr, "SITE_ADDRESS_LINE");
-        g_tl.hash = gcall(c, FN_FE_HASH, 0, 1, &a);
     }
     uint32_t a = gstr(g_tl.scr, TITLE_FNG), pk = gcall(c, FN_FE_PACKAGE, 0, 1, &a), h = H_COPYRIGHT;
     uint32_t o = ok(pk, 0x54) ? gcall(c, FN_PKG_FIND, pk, 1, &h) : 0;
-    if (!ok(o, 0x70) || MR32(o + 0x18u) != 2u || !ok(MR32(o + 0x2cu), 0x40)) return;   /* 2: a string */
-    uint32_t line = gcall(c, FN_PKG_FIND, pk, 1, &g_tl.hash);
-    if (!line){
-        if (!(line = fe_copy(c, pk, o, g_tl.hash)) || !ok(MR32(line + 0x2cu), 0x40)){
-            fprintf(stderr, "[intro] the title's copyright could not be copied: no line under it\n");
-            g_tl.off = 1;
-            return;
-        }
-        a = gstr(g_tl.scr, TITLE_LINE);
-        gcall(c, FN_FE_SETSTR, line, 1, &a);
-        MR32(line + 0x1cu) |= 2u;                /* a text of its own, as FEPrintf leaves it (0x537B30) */
-        uint32_t d0 = MR32(o + 0x2cu);
-        char tx[64]; uint32_t w = MR32(o + 0x64u), k = 0;
-        for (; ok(w, 2u * k + 1u) && k + 1 < sizeof tx && MR16(w + 2u * k); k++) tx[k] = (char)MR16(w + 2u * k);
-        tx[k] = 0;
-        fprintf(stderr, "[intro] title: \"%s\" under \"%s\" (y %.1f, size %.2f)\n", TITLE_LINE, tx,
-                (double)(MRF32(d0 + 0x20u) + LINE_DY), (double)(MRF32(d0 + 0x38u) * LINE_SIZE));
-    }
-    /* every frame, as the copy's animation (the copyright's, cloned) puts it back where the copyright is */
-    uint32_t d0 = MR32(o + 0x2cu), d1 = MR32(line + 0x2cu), hp = H_PRESS;
-    float want[4] = { MRF32(d0 + 0x1cu), MRF32(d0 + 0x20u) + LINE_DY, MRF32(d0 + 0x38u) * LINE_SIZE, MRF32(d0 + 0x3cu) * LINE_SIZE };
-    static const uint32_t AT[4] = { 0x1cu, 0x20u, 0x38u, 0x3cu };
-    for (int i = 0; i < 4; i++)
-        if (MRF32(d1 + AT[i]) != want[i]){ MRF32(d1 + AT[i]) = want[i]; MR32(line + 0x1cu) |= 0x400000u; }
-    uint32_t p = gcall(c, FN_PKG_FIND, pk, 1, &hp), dp = ok(p, 0x70) ? MR32(p + 0x2cu) : 0;
-    int32_t col[4];
-    for (uint32_t i = 0; i < 4; i++) col[i] = (int32_t)MR32((i < 3 && ok(dp, 16) ? dp : d0) + 4u * i);
-    for (uint32_t i = 0; i < 4; i++)
-        if ((int32_t)MR32(d1 + 4u * i) != col[i]){ MR32(d1 + 4u * i) = (uint32_t)col[i]; MR32(line + 0x1cu) |= 0x400000u; }
+    if (!ok(o, 0x70) || MR32(o + 0x18u) != 2u) return;
+    /* Compare actual text, so a reloaded package at a reused address is also
+     * updated, without allocating another string every frame. */
+    const unsigned char *text = (const unsigned char *)TITLE_COPYRIGHT;
+    uint32_t wide = MR32(o + 0x64u), i = 0;
+    while (text[i] && ok(wide, i * 2u + 1u) && MR16(wide + i * 2u) == text[i]) i++;
+    if (!text[i] && ok(wide, i * 2u + 1u) && !MR16(wide + i * 2u)) return;
+    a = gstr(g_tl.scr, TITLE_COPYRIGHT);
+    gcall(c, FN_FE_SETSTR, o, 1, &a);
+    MR32(o + 0x1cu) |= 2u;
 }

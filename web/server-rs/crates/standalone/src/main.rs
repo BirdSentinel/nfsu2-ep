@@ -15,7 +15,7 @@ use std::sync::Mutex;
 #[serde(default, deny_unknown_fields)]
 struct Config { bind: String, port: u16, max_players: usize }
 impl Default for Config {
-    fn default() -> Self { Self { bind: "0.0.0.0".into(), port: 8080, max_players: 128 } }
+    fn default() -> Self { Self { bind: "0.0.0.0".into(), port: 8080, max_players: 49 } }
 }
 
 struct Server { lan: Arc<LanSwitch>, roam: Arc<RoamHub>, skins: Arc<Mutex<skins::Skins>> }
@@ -118,27 +118,54 @@ async fn connection(mut s: TcpStream, server: Arc<Server>, permit: tokio::sync::
 
 #[tokio::main]
 async fn main() {
+    if std::env::args().any(|a| a == "--healthcheck") {
+        std::process::exit(if healthcheck().is_ok() { 0 } else { 1 });
+    }
     if let Err(e) = run().await {
-        eprintln!("Cannot start server: {e}\nPress Enter to close.");
-        let _ = std::io::stdin().read_line(&mut String::new());
+        eprintln!("Cannot start server: {e}");
+        #[cfg(windows)]
+        {
+            eprintln!("Press Enter to close.");
+            let _ = std::io::stdin().read_line(&mut String::new());
+        }
         std::process::exit(1);
     }
 }
+
+fn healthcheck() -> io::Result<()> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect_timeout(
+        &"127.0.0.1:8080".parse().unwrap(), Duration::from_secs(2))?;
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+    stream.write_all(b"GET /health HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n")?;
+    let mut status = [0; 13]; stream.read_exact(&mut status)?;
+    if &status == b"HTTP/1.1 200 " { Ok(()) } else { Err(io::Error::other("unhealthy server")) }
+}
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let exe = std::env::current_exe()?;
-    let root = exe.parent().unwrap();
+    let root = std::env::var_os("EP_SERVER_HOME").map(PathBuf::from)
+        .unwrap_or_else(|| exe.parent().unwrap().to_path_buf());
+    std::fs::create_dir_all(&root)?;
     let config_path = root.join("server.json");
-    let config: Config = if config_path.exists() { serde_json::from_slice(&std::fs::read(&config_path)?)? } else {
+    let mut config: Config = if config_path.exists() { serde_json::from_slice(&std::fs::read(&config_path)?)? } else {
         let c = Config::default(); std::fs::write(&config_path, serde_json::to_vec_pretty(&c)?)?; c
     };
     if config.port == 0 || !(2..=14000).contains(&config.max_players) { return Err("Invalid port or max_players in server.json".into()); }
+    if config.max_players > 49 {
+        eprintln!("Shared-session mode supports at most 49 players; limiting max_players to 49.");
+        config.max_players = 49;
+    }
     let state: PathBuf = root.join("state"); std::fs::create_dir_all(&state)?;
     let _ = nfsu2_util::logfile::to_files(&state.join("logs"));
     let listener = TcpListener::bind((config.bind.as_str(), config.port)).await?;
     let online = OnlineHost::spawn(OnlineOptions {
         state_dir: Some(state.join("online")), log: Arc::new(|s, _| log::line(s)), tap: None, claims: None, deny: None,
     });
-    let roam = RoamHub::spawn(RoamOptions::default(), Arc::new(|s| log::line(s)));
+    let roam = RoamHub::spawn(RoamOptions {
+        shared_session: true, degree: 48, min_degree: 48, max_players: 49,
+        ..RoamOptions::default()
+    }, Arc::new(|s| log::line(s)));
     let lan = LanSwitch::new(LanOptions { max_peers: config.max_players, max_text: 1_501_000, max_payload: 1_501_000, ..Default::default() }, "",
         Some(online.clone()), Some(roam.clone()), None, Some(state.join("lan-addresses.json")));
     online.attach_switch(lan.switch_send()); roam.attach_switch(lan.switch_send());
@@ -169,9 +196,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if config.bind == "0.0.0.0" {
         if let Some(ip) = lan_address() { log::line(&format!("Local network address: http://{ip}:{}", config.port)); }
     }
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
     loop {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => break,
+            _ = &mut shutdown => break,
             accepted = listener.accept() => {
                 let (s, _) = accepted?;
                 if let Ok(permit) = slots.clone().try_acquire_owned() {
@@ -183,5 +212,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     lan.stop(); log::line("Server stopped.");
     Ok(())
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = terminate.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    { let _ = tokio::signal::ctrl_c().await; }
 }
 

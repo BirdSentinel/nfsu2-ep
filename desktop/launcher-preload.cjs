@@ -8,6 +8,9 @@ window.addEventListener('DOMContentLoaded', () => {
   theme.id = 'ep-launcher-theme';
   theme.textContent = `
     .app [data-tab="other"] { display:none !important; }
+    .app [data-tab="friends"], #menu [data-act="crews"], #menu [data-act="friends"], #menu [data-act="friend"],
+    .set[data-key="roam"], .set[data-key="roam_room"], .set[data-key="roam_crew"], .set[data-key="roam_block"],
+    .set[data-key="roam_max_cars"], .set[data-key="roam_discovery"] { display:none !important; }
     #desktop-server-address { background:var(--field); color:var(--text); border:2px solid var(--edge); border-radius:8px; padding:10px 12px; min-height:42px; font:inherit; }
     #desktop-server-address:focus { outline:2px solid var(--lime); outline-offset:2px; }
     #desktop-server-status { color:var(--muted); overflow-wrap:anywhere; }
@@ -34,7 +37,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const box = document.createElement('section');
     box.id = 'desktop-server';
     box.style.cssText = 'padding:0 0 20px;margin:0 0 20px;border-bottom:1px solid var(--line)';
-    box.innerHTML = `<h3>Connection</h3>
+    box.innerHTML = `<h3>Connection</h3><p class="hint">Everyone on this server shares one free-roam session. Enter career free roam to meet the other players; no friends, crews or room selection needed.</p>
       <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px">Play online (one player per window)<input class="switch" id="desktop-online" type="checkbox"></label>
       <label for="desktop-server-address">Server address</label>
       <input id="desktop-server-address" type="text" placeholder="http://192.168.1.20:8080" spellcheck="false" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;margin:8px 0 12px">

@@ -296,10 +296,38 @@ static void cp_gone(unsigned mid){
 }
 
 /* ---- the guest thread's hooks (com.c) ----------------------------------------------------------- */
+/* GLOBAL/GlobalB.lzc, texture C51CE6F1: the title background only.
+ * Match both content checksums so other 1024-square UI textures stay intact.
+ * The desktop host decodes custom/intro.png anew on each application launch. */
+static uint8_t g_intro_candidate[TEXREP_MAXTEX];
+static uint8_t *g_intro_pixels;
+static int g_intro_read;
+static int intro_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_intro_candidate[mid] || level || pitch != 4096 || rows != 1024) return 0;
+    crc_init();
+    if (crc32(data, 4194304) != 0x7c0ea748u || adler32(data, 4194304) != 0x827e080au) return 0;
+    if (!g_intro_read){
+        g_intro_read = 1;
+        char path[1024];
+        if (fileio_resolve_game("GLOBAL\\custom-intro.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_intro_pixels = malloc(4194304);
+                if (g_intro_pixels && fread(g_intro_pixels, 1, 4194304, fp) != 4194304){ free(g_intro_pixels); g_intro_pixels = NULL; }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_intro_pixels) return 0;
+    metal_replace_texture(mid, 1024, 1024, 1, 21u, g_intro_pixels);
+    fprintf(stderr, "[intro] custom/intro.png replaced title background texture t%u\n", mid);
+    return 1;
+}
 void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsigned d3dfmt, unsigned usage, unsigned pool){
     (void)usage; (void)pool;
     cp_gone(mid);
     if (mid && mid < TEXREP_MAXTEX){
+        g_intro_candidate[mid] = w == 1024 && h == 1024 && d3dfmt == 21u;
         g_bi[mid] = w == PHOTO_ICON_KEY_W && h == PHOTO_ICON_KEY_H && d3dfmt == PHOTO_ICON_KEY_FMT;
         g_bi_levels[mid] = (uint8_t)(levels > 255 ? 255 : levels);
     }
@@ -310,6 +338,7 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     g_t[mid].st = w <= 0xFFFF && h <= 0xFFFF && may_be(w, h, d3dfmt);
 }
 void texrep_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (intro_uploaded(mid, level, data, pitch, rows)) return;
     if (mid && mid < TEXREP_MAXTEX && g_bi[mid] && copied_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (mid && mid < TEXREP_MAXTEX && g_bi[mid] && !level && builtin_uploaded(mid, data, (size_t)pitch * rows)) return;
     if (!g_on || !mid || mid >= TEXREP_MAXTEX || !g_t[mid].st || level) return;

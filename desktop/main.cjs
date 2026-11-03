@@ -140,10 +140,10 @@ async function createClient(id, initiallyStudio) {
     for (const p of ['game/SPEED2.EXE', 'web/index.html', 'web/game.wasm', 'web/game.json']) {
       if (!fs.existsSync(path.join(root, p))) throw new Error(`Missing ${p}. Copy the entire portable folder, including game and web.`);
     }
-    server = await startServer(root, port, png => {
+    server = await startServer(root, port, (png, width = 512, height = 512) => {
       let image = nativeImage.createFromBuffer(png);
       if (image.isEmpty()) throw Error('PNG could not be decoded');
-      image = image.resize({ width: 512, height: 512, quality: 'best' });
+      image = image.resize({ width, height, quality: 'best' });
       // Electron's Windows bitmap is premultiplied BGRA; our encoder takes straight RGBA.
       const bitmap = image.toBitmap(), rgba = Buffer.alloc(bitmap.length);
       for (let i = 0; i < bitmap.length; i += 4) {

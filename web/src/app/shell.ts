@@ -272,7 +272,7 @@ function evaluate() {
   if (phase === 'exited') { updatePlay(); return; }
   const press = N('Press Play to start.');
   const local = Number(resolved().env.NFSU2_SPLIT_PLAYERS ?? 1);
-  setPhase('ready', T('Ready'), local > 1
+  setPhase('ready', T('Ready'), localGameFiles() ? () => 'Press Play to start' : local > 1
     ? () => `Press Play, then choose Split Screen in the main menu. Select 2, 3 or 4 players, set up the race, then join and choose a car with each controller.`
     : offline ? () => t('No connection to the server: you can play, but not with others. {press}', { press: t(press) }) : T(press));
 }
@@ -280,6 +280,8 @@ function evaluate() {
 function updatePlay() {
   const ok = !!loaded && instance.owner && !blocking() && !starting && (phase === 'ready' || phase === 'exited');
   $<HTMLButtonElement>('#play').disabled = !ok;
+  const connection = desktopConnection();
+  if (connection) live($('#play-label'), () => connection.online && !!connection.server && answered && !offline ? 'Play online' : 'Play offline');
   $('#retry').hidden = checks.get('module')?.state !== 'fail';
 }
 
@@ -312,6 +314,18 @@ function resolved(host: Record<string, string> = {}): Resolved {
     r.env.NFSU2_SPLIT_PLAYERS = connection.online ? '1' : '2';
     r.env.NFSU2_NET = connection.online ? 'on' : 'off';
     r.env.NFSU2_ONLINE = connection.online ? '1' : '0';
+    // Small standalone servers have one public free-roam session. Old local
+    // room/crew/block settings must not silently split its players.
+    r.env.NFSU2_ROAM = connection.online ? '1' : '0';
+    r.env.NFSU2_ROAM_ROOM = '';
+    r.env.NFSU2_ROAM_CREW = '';
+    r.env.NFSU2_ROAM_CREW_RGB = '';
+    r.env.NFSU2_ROAM_BLOCK = '';
+    r.env.NFSU2_ROAM_DISCOVERY = '1';
+    r.env.NFSU2_ROAM_MAX_PLAYERS = '49';
+    r.env.NFSU2_ROAM_MAX_CARS = '48';
+    r.source.NFSU2_ROAM_MAX_CARS = 'settings.ini';
+    r.env.NFSU2_ROAM_CARS_AUTO = '0';
   }
   if (Number(r.env.NFSU2_SPLIT_PLAYERS ?? 1) > 1) {
     r.env.NFSU2_NET = 'off'; r.env.NFSU2_ROAM = '0'; r.env.NFSU2_ONLINE = '0';
@@ -775,8 +789,8 @@ async function startGame() {
   pauseHint.start(session);
   driftPanel.start(session);
   photo.start(session);
-  friendPrompt.start(session, net && r.env.NFSU2_ROAM === '1');
-  friendMessages.start(session, net && r.env.NFSU2_ROAM === '1');
+  friendPrompt.start(session, !localGameFiles() && net && r.env.NFSU2_ROAM === '1');
+  friendMessages.start(session, !localGameFiles() && net && r.env.NFSU2_ROAM === '1');
   // (the races' between players free roam on or not; free roam's only with it on: the career's free roam alone keeps
   // 1-4, Esc and the right stick for the game)
   quickChat.start(session, net && r.env.NFSU2_ROAM_SAY !== '0', net && r.env.NFSU2_ROAM === '1',
@@ -818,7 +832,7 @@ function setReach(r: Reach) {
   misses = r === 'ok' ? 0 : misses + 1;
   if (r === 'ok') answered = true;
   else if (answered && misses < 2 && r !== 'no-network') { log.add(`[app] the server did not answer once (${REACH_LOG[r]})`); return; }
-  if (r === reach) return;
+  if (r === reach) { updatePlay(); return; }
   reach = r;
   offline = r !== 'ok';
   log.add(offline ? `[app] the server does not answer: offline (${REACH_LOG[r]})` : '[app] the server answers again');
@@ -1540,6 +1554,7 @@ function inviteLive(): boolean {
 
 /** Join inv here (this tab owns the saves): settings.ini, then the running game where it can. */
 async function applyInvite(inv: Invite): Promise<Joined> {
+  if (localGameFiles()) return 'none';
   const was = await readText(SAVE, 'settings.ini').catch(() => null) ?? settingsText ?? TEMPLATE;
   const now = inviteNow(was), d = inviteDiff(inv, now);
   if (d.full) return 'full';
@@ -2017,9 +2032,9 @@ export async function boot() {
   fps.extra = () => session?.stats() ?? {};
   // the language this browser showed last, at once (settings.ini says which it is: applyLanguage, once it is read)
   void setLanguage(lastLanguage(), logLine);
-  // the big panel's tabs (the one open last, or the one the address names: #friends) and About's
+  // the big panel's tabs (the one open last, or the one the address names: #friends)
+  if (localGameFiles()) $('#settings > .tabs [data-tab="friends"]')?.remove();
   panelTabs($('#settings'), { store: 'nfsu2.page.tab', hash: true });
-  panelTabs($('#about'));
   settings = new SettingsPanel($('#settings'), {
     // another language or texture pack counts other files as the game data (its pack); a keyphrase sends the file
     saveDir: SAVE, environment: ENVIRONMENT, defaults: DEVICE, onSaved: text => {
