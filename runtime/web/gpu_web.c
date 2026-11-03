@@ -74,7 +74,7 @@ static int      g_detached;      /* the page never attached: dropped back to nul
                                                blocks from here */
 _Static_assert(GW_K_HL >= KZERO && GW_K_HL + GW_HL_BYTES <= KFIRST && GW_K_MARKS + GW_MARKS_BYTES <= KFIRST
                && GW_K_TONE + GW_TONE_BYTES <= KFIRST && GW_K_LAT + GW_LAT_BYTES <= KFIRST
-               && GW_K_PHOTO + GW_PHOTO_BYTES <= KFIRST, "K arena");
+               && GW_K_PHOTO + GW_PHOTO_BYTES <= 1632u && 1632u + 400u <= KFIRST, "K arena including online skins");
 
 typedef struct {
     GwDraw  *d;  unsigned dn;
@@ -966,6 +966,9 @@ static void handoff(uint32_t rb_id, uint32_t rb_tex, uint32_t rb_dst, uint32_t r
     F->k = (uint32_t)(uintptr_t)B->kb; F->psc = (uint32_t)(uintptr_t)B->psc;
     memcpy(B->kb + GW_K_TONE, &g_tone, sizeof g_tone);
     memcpy(B->kb + GW_K_PHOTO, &g_photo, offsetof(GwPhoto, ack));       /* (ack is the page's) */
+    /* Online skins: magic, count, then 49 {GPU texture id, owner VIP} pairs.
+     * VIP 0 is our own car. This optional block occupies the arena's spare tail. */
+    { extern void roam_game_skin_map(uint32_t *); roam_game_skin_map((uint32_t *)(B->kb + 1632)); }
     { GwLat *L = (GwLat *)(B->kb + GW_K_LAT);
       L->magic = GW_LAT_MAGIC; L->input_ms = hfr_frame_input_ms(); L->handoff_ms = now_ms(); }
     F->rq_end = (uint32_t)g_ctl->rq_head;

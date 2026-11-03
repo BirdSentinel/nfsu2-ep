@@ -30,6 +30,7 @@ const dv = () => new DataView(memory.buffer);
 // ---------------------------------------------------------------- /data ----
 interface DNode { name: string; dir: boolean; size: number; mtime: number; kids?: Map<string, DNode>; byLower?: Map<string, DNode>; path: string; ino: number }
 let dataRoot: DNode;
+let localFiles = false;
 let inoNext = 16;
 let runs: { url: string; max: number };     // the server's compressed blocks (datacache.ts blockRuns)
 function mkdirNode(name: string, path: string): DNode { return { name, dir: true, size: 0, mtime: 0, kids: new Map(), byLower: new Map(), path, ino: inoNext++ }; }
@@ -38,6 +39,7 @@ async function loadManifest() {
   const r = await fetch(cfg.manifestUrl, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`manifest: HTTP ${r.status}`);
   const m = await r.json() as Manifest;
+  localFiles = m.localFiles === true;
   runs = blockRuns(m);
   dataRoot = mkdirNode('', '');
   for (const f of m.files) {
@@ -127,7 +129,7 @@ async function cacheFile(n: DNode) {
 
 function memPut(key: string, b: Uint8Array) {
   memBlocks.set(key, b); memBytes += b.length;
-  const budget = cacheDir && keeping ? MEM_KEPT : MEM_ALONE;
+  const budget = localFiles || cacheDir && keeping ? MEM_KEPT : MEM_ALONE;
   for (const [k, v] of memBlocks) { if (memBytes <= budget) break; memBlocks.delete(k); memBytes -= v.length; }
 }
 // a line for the game's log (F9 > Download log), as "[data] ...": what a read waited for on the server
@@ -746,8 +748,14 @@ onmessage = async (e: MessageEvent<Init | { t: 'save-ready' }>) => {
   try {
     const opfs = await navigator.storage.getDirectory();
     saveRoot = await opfs.getDirectoryHandle(cfg.saveDir, { create: true });
-    try { cacheDir = await opfs.getDirectoryHandle(CACHE_DIR, { create: true }); } catch { cacheDir = null; }
     await loadManifest();
+    if (!localFiles) {
+      try { cacheDir = await opfs.getDirectoryHandle(CACHE_DIR, { create: true }); } catch { cacheDir = null; }
+    } else {
+      cacheDir = null;
+      keeping = false;
+      note('[data] reading installed game files directly; disk cache and preloading disabled');
+    }
     fds.set(3, { mount: 'data', kind: 'dir', path: '', pos: 0, append: false, node: dataRoot, preopen: '/data' });
     fds.set(4, { mount: 'save', kind: 'dir', path: '', pos: 0, append: false, dh: saveRoot, preopen: '/save' });
     fds.set(5, { mount: 'dev', kind: 'dir', path: '', pos: 0, append: false, preopen: '/dev' });

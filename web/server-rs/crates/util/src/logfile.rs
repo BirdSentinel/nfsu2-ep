@@ -6,6 +6,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -40,14 +41,22 @@ fn day_name(day: i64) -> String {
 }
 
 fn open(dir: &Path, day: i64) -> io::Result<File> {
-    OpenOptions::new().create(true).append(true).mode(0o600).open(dir.join(format!("{}.log", day_name(day))))
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    options.open(dir.join(format!("{}.log", day_name(day))))
 }
 
 /// From now on the console's lines go into `dir` too (made, private to this server's user, if it is not there); the
 /// days that ended are gzipped and the ones past DAYS_KEPT go, in a thread of its own.  Err: `dir` or today's file
 /// cannot be made, or the files were set already.
 pub fn to_files(dir: &Path) -> io::Result<()> {
-    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(0o700);
+    builder.create(dir)?;
     let day = now_ms().div_euclid(DAY_MS);
     let file = open(dir, day)?;
     FILES
@@ -165,7 +174,11 @@ fn tidy_now(dir: &Path, today: i64) -> io::Result<()> {
 /// day's file made again after it was gzipped), then gone
 fn gzip(dir: &Path, day: &str) -> io::Result<()> {
     let (log, gz, part) = (dir.join(format!("{day}.log")), dir.join(format!("{day}.log.gz")), dir.join(format!("{day}.log.gz.part")));
-    let mut out = OpenOptions::new().create(true).write(true).truncate(true).mode(0o600).open(&part)?;
+    let mut options = OpenOptions::new();
+    options.create(true).write(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut out = options.open(&part)?;
     match File::open(&gz) {
         Ok(mut was) => {
             io::copy(&mut was, &mut out)?;

@@ -5,7 +5,8 @@
 // scaled down by `scale` when it is below 1, with the site's address in its
 // corner when `mark` is set (F12 pictures, unless photo mode's panel turned it off).
 
-export interface ToPng { id: number; px: ArrayBuffer; w: number; h: number; bpr: number; scale: number; mark?: boolean }
+import { encodeSkinPng } from './skin-png';
+export interface ToPng { id: number; px: ArrayBuffer; w: number; h: number; bpr: number; scale: number; mark?: boolean; preserveAlpha?: boolean }
 export type FromPng = { id: number; png: Blob } | { id: number; error: string };
 
 const post = (m: FromPng) => (self as unknown as Worker).postMessage(m);
@@ -26,7 +27,12 @@ onmessage = async (e: MessageEvent<ToPng>) => {
     const src = new Uint8Array(px), img = new ImageData(w, h), d = img.data;
     for (let y = 0; y < h; y++) {
       let s = y * bpr, o = y * w * 4;
-      for (let x = 0; x < w; x++, s += 4, o += 4) { d[o] = src[s + 2]; d[o + 1] = src[s + 1]; d[o + 2] = src[s]; d[o + 3] = 255; }
+      for (let x = 0; x < w; x++, s += 4, o += 4) { d[o] = src[s + 2]; d[o + 1] = src[s + 1]; d[o + 2] = src[s]; d[o + 3] = e.data.preserveAlpha ? src[s + 3] : 255; }
+    }
+    if (e.data.preserveAlpha) {
+      if (w !== 512 || h !== 512) throw new Error('Invalid skin dimensions');
+      post({ id, png: await encodeSkinPng(new Uint8Array(d.buffer)) });
+      return;
     }
     let oc = new OffscreenCanvas(w, h);
     oc.getContext('2d')!.putImageData(img, 0, 0);

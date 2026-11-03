@@ -62,6 +62,7 @@
 // no LAN endpoint is answered with a reset (refused), as a host without a
 // listener would.
 import type { GameProcess } from '../host/process';
+import { skinsFor } from './skins';
 import { HostKind } from '../host/abi';
 import * as P from './proto';
 import { N } from '../app/i18n';
@@ -428,6 +429,10 @@ class Link implements NetLink {
 
   constructor(private proc: GameProcess, private o: NetOptions) {
     this.online = new Promise(r => (this.resolveOnline = r));
+    skinsFor(proc).send = message => {
+      if (this.state !== 'online' || !this.ws || this.ws.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 131072) return false;
+      this.ws.send(JSON.stringify(message)); return true;
+    };
   }
 
   private log(s: string) { this.o.log?.(`[net] ${s}`); }
@@ -717,7 +722,15 @@ class Link implements NetLink {
     ws.onerror = () => { /* onclose follows */ };
   }
   private control(m: any) {
+    if (m.t === 'skin' || m.t === 'skin-ready' || m.t === 'skin-saved') {
+      skinsFor(this.proc).receive(m);
+      if (m.t === 'skin-saved') this.log('[skins] car design uploaded');
+      if (m.t === 'skin' && m.png) this.log(`[skins] received car design from ${P.ipStr(m.vip)}`);
+      return;
+    }
     if (m.t === 'welcome' && typeof m.vip === 'number') {
+      skinsFor(this.proc).reset();
+      this.ws?.send(JSON.stringify({ t: 'skin-hello' }));
       const vip = m.vip >>> 0, mask = P.ipNum(String(m.mask ?? '255.255.255.0')) ?? 0xffffff00;
       const again = this.vipNum === vip;
       this.vipNum = vip; this.vip = P.ipStr(vip); this.netmask = mask; this.generation++;
@@ -1017,6 +1030,7 @@ class Link implements NetLink {
   }
   close() {
     if (this.closed) return;
+    skinsFor(this.proc).reset(); skinsFor(this.proc).send = null;
     // send what C queued last (free roam's BYEs, LAN play's FIN/RST) before the socket goes
     for (const ep of this.eps()) this.drainTx(ep);
     this.closed = true; this.state = 'closed';

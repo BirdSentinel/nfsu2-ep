@@ -27,11 +27,11 @@ function inventory(root, game = false) {
   return { files, entries };
 }
 
-async function startServer(root, port = 18742, decodePNG) {
+async function startServer(root, port = 18742, decodePNG, online) {
   let data = inventory(path.join(root, 'game'), true);
   const vinylNotes = decodePNG ? prepareVinyls(data, decodePNG) : [];
   const web = inventory(path.join(root, 'web'));
-  let manifest = JSON.stringify({ files: data.entries, blocks: { url: '/data-blocks/', size: BLOCK, max: 8 } });
+  let manifest = JSON.stringify({ localFiles: true, files: data.entries, blocks: { url: '/data-blocks/', size: BLOCK, max: 8 } });
   const server = http.createServer((req, res) => {
     const origin = `http://127.0.0.1:${server.address().port}`;
     const reply = (code, body = '', type = 'text/plain') => {
@@ -44,11 +44,13 @@ async function startServer(root, port = 18742, decodePNG) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store');
     if (req.headers.host !== new URL(origin).host || (req.headers.origin && req.headers.origin !== origin)) return reply(403);
-    if (!['GET', 'HEAD'].includes(req.method)) return reply(405);
     try {
       const url = new URL(req.url, origin), p = decodeURIComponent(url.pathname);
       if (p.includes('\\') || p.includes('\0') || p.split('/').some(x => x === '..' || x.includes(':'))) return reply(400);
+      if (online?.handles(p)) return online.http(req, res);
+      if (!['GET', 'HEAD'].includes(req.method)) return reply(405);
       if (p === '/data-manifest') return reply(200, manifest, 'application/json');
+      if (p === '/desktop-storage-init') return reply(200, '<!doctype html><meta charset="utf-8"><title>Együttparkolás</title>', 'text/html');
       if (p === '/players') return reply(200, JSON.stringify({ players: 1, online: 0, roam: 0, full: false, queue: 0, roamBusy: false }), 'application/json');
       let file;
       const blocks = p.startsWith('/data-blocks/');
@@ -79,13 +81,17 @@ async function startServer(root, port = 18742, decodePNG) {
       pipeline(file.buffer ? Readable.from([file.buffer.subarray(start, end + 1)]) : fs.createReadStream(file.abs, { start, end }), res, () => {});
     } catch { if (!res.headersSent) reply(400); else res.destroy(); }
   });
+  server.on('upgrade', (req, socket, head) => {
+    if (online) online.upgrade(req, socket, head, `http://127.0.0.1:${server.address().port}`);
+    else socket.destroy();
+  });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   server.vinylNotes = vinylNotes;
   server.refreshVinyls = () => {
     const next = inventory(path.join(root, 'game'), true);
     const notes = decodePNG ? prepareVinyls(next, decodePNG) : [];
     data = next;
-    manifest = JSON.stringify({ files: data.entries, blocks: { url: '/data-blocks/', size: BLOCK, max: 8 } });
+    manifest = JSON.stringify({ localFiles: true, files: data.entries, blocks: { url: '/data-blocks/', size: BLOCK, max: 8 } });
     server.vinylNotes = notes;
   };
   return server;

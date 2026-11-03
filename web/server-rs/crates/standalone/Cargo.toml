@@ -1,0 +1,19 @@
+[package]
+name = "egyuttparkolas-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nfsu2-util.workspace = true
+nfsu2-ws.workspace = true
+nfsu2-lan.workspace = true
+nfsu2-online.workspace = true
+nfsu2-roam.workspace = true
+tokio.workspace = true
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+httparse.workspace = true
+base64.workspace = true

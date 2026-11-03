@@ -21,6 +21,7 @@
 // not blend; draws into a texture that no longer exists are dropped (the Mac
 // drew them on the screen).
 import * as P from './proto';
+import { decodeSkinPng } from './skin-png';
 import { D, F, Kind, Op } from './proto';
 import { COPY, FF_FS, TONE, TVERT_VS } from './wgsl';
 import { createShaderAbi, alphaFunc, PSCUBE, VSPAR_SIZE, KWIN_SIZE, PSPAR_SIZE, HLPAR_SIZE } from './shader-abi';
@@ -946,21 +947,49 @@ export class Encoder {
   }
 
   /** diagnostics: texture `id` (level 0, face 0) drawn into a new bgra8 texture of its size, or null */
-  snapshot(enc: GPUCommandEncoder, id: number): { tex: GPUTexture; info: string } | null {
+  snapshot(enc: GPUCommandEncoder, id: number, opaque = true): { tex: GPUTexture; info: string } | null {
     const t = this.tex[id];
     if (!t) return null;
     const out = this.device.createTexture({ size: [t.w, t.h], format: 'bgra8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
     const v = t.tex.createView({ dimension: '2d', baseArrayLayer: 0, arrayLayerCount: 1, baseMipLevel: 0, mipLevelCount: 1 });
-    this.copyQuad(enc, v, out.createView(), 'bgra8unorm', this.nearest, undefined, true);
+    this.copyQuad(enc, v, out.createView(), 'bgra8unorm', this.nearest, undefined, opaque);
     this.destroyLater.push(out);
     return { tex: out, info: `${t.w}x${t.h} ${t.tex.format} fmt ${t.fmt} levels ${t.levels}${t.cube ? ' cube' : ''}${t.rt ? ' rt' : ''}` };
   }
 
   private texFor(id: number, cube: boolean, passTex: number): Tex {
-    const t = id ? this.tex[id] : undefined;
+    const t = id ? (!cube && id !== passTex ? this.skinOverrides.get(id) : undefined) ?? this.tex[id] : undefined;
     if (!t || t.cube !== cube) return cube ? this.whiteCube : this.white;
     if (id === passTex) { this.conflicts++; return cube ? this.whiteCube : this.white; }
     return t;
+  }
+
+  private skinOverrides = new Map<number, Tex>();
+  private skinImages = new Map<number, { source: Blob; texture?: Tex }>();
+  onlineSkins(owners: [number, number][], images: Map<number, { png: Blob }>) {
+    this.skinOverrides.clear();
+    const wanted = new Set(owners.map(([, vip]) => vip));
+    for (const [vip, image] of this.skinImages) if (!wanted.has(vip) || images.get(vip)?.png !== image.source) {
+      if (image.texture) this.destroyLater.push(image.texture.tex);
+      this.skinImages.delete(vip); this.bg1.clear();
+    }
+    for (const [id, vip] of owners) {
+      const src = images.get(vip), base = this.tex[id];
+      if (!vip || !src || !base) continue;
+      let entry = this.skinImages.get(vip);
+      if (!entry) {
+        entry = { source: src.png }; this.skinImages.set(vip, entry);
+        const pending = entry;
+        void decodeSkinPng(src.png).then(pixels => {
+            if (this.skinImages.get(vip) !== pending) return;
+            const tex = this.device.createTexture({ size: [512, 512], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+            this.device.queue.writeTexture({ texture: tex }, pixels, { bytesPerRow: 512 * 4 }, [512, 512]);
+            pending.texture = { ...base, serial: this.serial++, tex, view: tex.createView(), w: 512, h: 512, levels: 1, cube: false, rt: false, rtViews: [] };
+            this.log(`[skins] applied player ${vip} design to car texture ${id}`);
+        }).catch(error => this.log(`[skins] invalid image, original skin retained: ${error}`));
+      }
+      if (entry.texture) this.skinOverrides.set(id, entry.texture);
+    }
   }
 
   /** after the frame's submit: drop what the frame may still have referenced */

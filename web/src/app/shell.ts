@@ -70,6 +70,7 @@ import { NameClaims, onlineName } from './claim';
 import { claimQuietly, NameRow, quietCheck, renamePick, settleName, type PlayNameDeps } from './claim-ui';
 import { RenderCheck, RENDER_CHECK_TIMES, type RenderCheckTimes } from './rendercheck';
 import { moviesKept, Predownload } from './predownload';
+import { localGameFiles, desktopConnection } from './desktop';
 import { movieCodec } from '../host/movie';
 import { texSplit } from '../gpu/index';
 
@@ -306,6 +307,12 @@ function resolved(host: Record<string, string> = {}): Resolved {
   // normal local server; arbitrary environment/script parameters stay dev-only.
   const local = addr.get('localPlayers');
   if (local && /^[1-6]$/.test(local)) r.env.NFSU2_SPLIT_PLAYERS = local;
+  const connection = desktopConnection();
+  if (connection) {
+    r.env.NFSU2_SPLIT_PLAYERS = connection.online ? '1' : '2';
+    r.env.NFSU2_NET = connection.online ? 'on' : 'off';
+    r.env.NFSU2_ONLINE = connection.online ? '1' : '0';
+  }
   if (Number(r.env.NFSU2_SPLIT_PLAYERS ?? 1) > 1) {
     r.env.NFSU2_NET = 'off'; r.env.NFSU2_ROAM = '0'; r.env.NFSU2_ONLINE = '0';
   }
@@ -837,6 +844,7 @@ const REACH_TEXT: Record<Reach, Msg> = {
 /** Offline mode (sw.ts) keeps the page, its scripts, the module and the list of game files in this browser.  Asked
  *  for once the module has loaded, so a first visit downloads the module once (the copy is the HTTP cache's). */
 function keepForOffline() {
+  if (localGameFiles()) return;
   if (!('serviceWorker' in navigator) || !isSecureContext) return;
   navigator.serviceWorker.register('/sw.js').catch(e => log.add(`[app] offline mode is not available here: ${e}`));
 }

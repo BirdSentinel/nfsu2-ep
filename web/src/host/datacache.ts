@@ -18,6 +18,8 @@ export const MANIFEST_URL = '/data-manifest', DATA_BASE = '/data/';
 /** the server's /data-manifest: every file and folder of the install folder it serves, and where it serves runs
  *  of their blocks compressed */
 export interface Manifest {
+  /** Portable desktop: blocks are read from the installed game folder; never persist a second copy. */
+  localFiles?: boolean;
   files: { p: string; d?: number; s?: number; m?: number }[];
   blocks: { url: string; size: number; max: number };
 }

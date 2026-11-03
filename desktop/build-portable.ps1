@@ -34,6 +34,7 @@ New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'package.json'), (Join-Path $PSScriptRoot 'main.cjs'), (Join-Path $PSScriptRoot 'server.cjs'), (Join-Path $PSScriptRoot 'vinyls.cjs') -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'studio-preload.cjs'), (Join-Path $PSScriptRoot 'studio-library.cjs') -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'launcher-preload.cjs'), (Join-Path $PSScriptRoot 'studio-export.cjs') -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'online.cjs') -Destination $appDir
 Copy-Item -LiteralPath $Frontend -Destination (Join-Path $output 'web') -Recurse
 Copy-Item -LiteralPath (Join-Path $Module 'nfsu2.wasm') -Destination (Join-Path $output 'web/game.wasm')
 Copy-Item -LiteralPath (Join-Path $Module 'nfsu2.json') -Destination (Join-Path $output 'web/game.json')

@@ -5,6 +5,7 @@
 // goes on after the game ends.
 
 import type { FromPredownload, ToPredownload } from '../host/predownload-worker';
+import { localGameFiles } from './desktop';
 import { DATA_BASE, MANIFEST_URL, aheadFiles, languageMovies, manifestFiles, scanCache, type Manifest } from '../host/datacache';
 
 export type DownloadState = 'idle' | 'running' | 'paused' | 'done' | 'error';
@@ -22,6 +23,7 @@ const STOP_WAIT_MS = 3000;
 /** Whether every movie a game in this language can play is in this browser's cache (they are not downloaded ahead:
  *  only one that played is), in VP6 or, where the browser plays them in AV1 (av1), their AV1 copies. */
 export async function moviesKept(language: string, av1: boolean): Promise<boolean> {
+  if (localGameFiles()) return true;
   const r = await fetch(MANIFEST_URL, { cache: 'no-cache' });
   if (!r.ok) return false;
   const s = await scanCache(languageMovies(manifestFiles(await r.json() as Manifest), language, av1));
@@ -30,6 +32,7 @@ export async function moviesKept(language: string, av1: boolean): Promise<boolea
 
 /** How much of what the download fetches (all but the movies) this browser keeps: bytes in the cache, of their total. */
 export async function gameDataKept(language: string, texpack: string): Promise<{ have: number; total: number }> {
+  if (localGameFiles()) return { have: 0, total: 0 };
   const r = await fetch(MANIFEST_URL, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const s = await scanCache(aheadFiles(manifestFiles(await r.json() as Manifest), language, texpack));
@@ -50,6 +53,7 @@ export class Predownload {
   get running() { return this.w !== null; }
 
   start() {
+    if (localGameFiles()) return;
     if (this.w) return;
     const w = this.w = new Worker(new URL('/host/predownload-worker.js', import.meta.url), { type: 'module', name: 'predownload' });
     this.samples = [];

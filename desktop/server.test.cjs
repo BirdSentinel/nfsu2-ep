@@ -20,6 +20,10 @@ test('portable asset server: game reads, isolation, ranges and restricted files'
     assert.equal(page.headers.get('cross-origin-opener-policy'), 'same-origin');
     assert.match(await page.text(), /game/);
     const manifest = await (await fetch(base + '/data-manifest')).json();
+    assert.equal(manifest.localFiles, true);
+    const init = await fetch(base + '/desktop-storage-init');
+    assert.equal(init.status, 200);
+    assert.doesNotMatch(await init.text(), /<script/i);
     assert.equal(manifest.files.length, 2);
     assert.equal(manifest.blocks.size, 1 << 20);
     const block = await fetch(base + '/data-blocks/cars/test.bin?b=1&n=1');

@@ -850,6 +850,47 @@ static uint32_t slot_skin(int k){
     uint32_t n = skin_of(g_sl[k].car ? rd32(g_sl[k].car + 0x14u) : 0);
     return n ? n : 2u + (uint32_t)k;
 }
+
+#ifdef __wasm__
+/* Per-frame GPU texture ownership. Never replace a shared VINYLS.BIN texture:
+ * two drivers can use the same vinyl slot with different artwork. */
+static uint32_t g_online_skins[100];
+void roam_game_skin_map(uint32_t *out){ memcpy(out, g_online_skins, sizeof g_online_skins); }
+static uint32_t skin_gpu(CPU *c, uint32_t slot){
+    char name[32]; snprintf(name, sizeof name, "DUMMY_SKIN%u", slot);
+    uint32_t a[3] = { bhash(name), 0, 0 };
+    uint32_t ti = rh_call(c, FN_TEXINFO, 0, 0, 3, a);
+    uint32_t pl = ti ? rd32(ti) : 0, obj = pl ? rd32(pl + 0x18u) : 0;
+    return obj ? rd32(obj + 28u) : 0;
+}
+void roam_game_skin_frame(CPU *c){
+    memset(g_online_skins, 0, sizeof g_online_skins);
+    g_online_skins[0] = 0x534b494eu;
+    if (rd32(G_FLOW) != 6u || !player_car()) return;
+    uint32_t own = skin_of(rd32(player_car() + 0x14u));
+    uint32_t tex = skin_gpu(c, own ? own : 1u);
+    if (tex) { g_online_skins[2] = tex; g_online_skins[3] = 0; g_online_skins[1] = 1; }
+    extern int racenet_skin_cars(uint32_t *, int);
+    uint32_t racing[12]; int nr = racenet_skin_cars(racing, 6);
+    for (int i = 0; i < nr; i++) {
+        uint32_t car = racing[i*2], slot = skin_of(rd32(car + 0x14u));
+        if (car == player_car() || !slot || !(tex = skin_gpu(c, slot))) continue;
+        unsigned n = g_online_skins[1]++;
+        g_online_skins[2 + n*2] = tex; g_online_skins[3 + n*2] = racing[i*2+1];
+    }
+    if (nr || !O.on) return;
+    for (int k = 0; k < NSLOT; k++) {
+        Slot *s = &g_sl[k]; uint32_t ip = 0;
+        if (s->st != SL_ACTIVE || s->hidden || s->world != world()) continue;
+        roam_plat_lock();
+        if (s->peer >= 0 && s->peer < RC_TABLE && g_s.peer[s->peer].id == s->peer_id) ip = g_s.peer[s->peer].ip;
+        roam_plat_unlock();
+        if (!ip || !(tex = skin_gpu(c, slot_skin(k)))) continue;
+        unsigned n = g_online_skins[1]++;
+        g_online_skins[2 + n * 2] = tex; g_online_skins[3 + n * 2] = ip;
+    }
+}
+#endif
 /* g_gmem: scratch for guest-call arguments (+0x40 a performance block, +0x80
  * a grid entry, +0xA0 a file name, +0x100 the name labels' vectors and
  * strings), then the slots' rides and records */
@@ -7100,6 +7141,9 @@ static void car_rescue(int64_t host){
              g_lp_ok ? "where it last was" : "the new career's start (no good place this time in free roam)");
 }
 void roam_game_frame(CPU *c){
+#ifdef __wasm__
+    roam_game_skin_frame(c);
+#endif
     if (!g_inited) init_once(c);
     if (!O.on) return;
 #ifndef ROAM_HOST_WIN

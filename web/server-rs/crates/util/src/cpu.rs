@@ -10,6 +10,21 @@ use std::time::{Duration, Instant};
 
 /// CPU seconds (user + system) the process has used.
 pub fn process_cpu_seconds() -> f64 {
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn GetProcessTimes(process: *mut std::ffi::c_void, created: *mut u64, exited: *mut u64, kernel: *mut u64, user: *mut u64) -> i32;
+        }
+        let (mut created, mut exited, mut kernel, mut user) = (0, 0, 0, 0);
+        // FILETIME values are 100 ns ticks, written into these four 64-bit slots.
+        return unsafe {
+            if GetProcessTimes(GetCurrentProcess(), &mut created, &mut exited, &mut kernel, &mut user) == 0 { 0.0 }
+            else { (kernel + user) as f64 / 10_000_000.0 }
+        };
+    }
+    #[cfg(unix)]
     // SAFETY: getrusage only writes the struct it is given
     unsafe {
         let mut u: libc::rusage = std::mem::zeroed();
@@ -23,11 +38,16 @@ pub fn process_cpu_seconds() -> f64 {
 
 /// Resident memory in bytes (Linux: /proc/self/statm), 0 where it cannot be read.
 pub fn resident_bytes() -> u64 {
+    #[cfg(windows)]
+    { return 0; }
+    #[cfg(unix)]
+    {
     let Ok(s) = std::fs::read_to_string("/proc/self/statm") else { return 0 };
     let pages: u64 = s.split_whitespace().nth(1).and_then(|x| x.parse().ok()).unwrap_or(0);
     // SAFETY: sysconf has no preconditions
     let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     pages * if page > 0 { page as u64 } else { 4096 }
+    }
 }
 
 /// The share of `threads` cores the process used between one `sample()` and the next.

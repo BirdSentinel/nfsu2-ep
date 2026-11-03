@@ -155,7 +155,7 @@
 #define HORN_PORT    3659u         /* racehorn.c's */
 #define PEER_MS      5000u
 #define FS_MS        2000u
-#define FS_N         (16 + NAME_N)
+#define FS_N         (20 + NAME_N) /* final word: original LAN address, retained by the relay */
 #define NAME_N       16
 #define NCARS        8
 #define NLINKS       16
@@ -222,8 +222,22 @@ typedef struct {
 } Car;
 static Car g_car[NCARS];
 /* the others' frame rates, by name */
-typedef struct { char name[NAME_N]; uint32_t n, slow, longest_ms; float sum, lo; double clock; } Fps;
+typedef struct { char name[NAME_N]; uint32_t n, slow, longest_ms, skin_ip; float sum, lo; double clock; } Fps;
 static Fps g_fps[NCARS];
+
+/* Renderer ownership for the game's native Online/LAN race cars. */
+static int in_world(uint32_t w, uint32_t car);
+int racenet_skin_cars(uint32_t *out, int max){
+    if (!(rd32(G_NETMODE) & 0x208u) || rd32(G_FLOW) != 6u) return 0;
+    int n = 0;
+    for (int i = 0; i < NCARS && n < max; i++) {
+        if (!g_car[i].car || !g_car[i].name[0] || !in_world(rd32(G_WORLD), g_car[i].car)) continue;
+        for (int j = 0; j < NCARS; j++) if (g_fps[j].skin_ip && !strcmp(g_car[i].name, g_fps[j].name)) {
+            out[2*n] = g_car[i].car; out[2*n+1] = g_fps[j].skin_ip; n++; break;
+        }
+    }
+    return n;
+}
 
 static Car *car_of(uint32_t car, int add){
     for (int i = 0; i < NCARS; i++) if (g_car[i].car == car) return &g_car[i];
@@ -515,18 +529,26 @@ static void send_all(const uint8_t *m, uint32_t except){
 }
 /* an N2FS from the horn's port (racehorn.c) */
 void racenet_heard(uint8_t *m, int n, uint32_t from){
-    if (n < FS_N || memcmp(m, "N2FS", 4) || m[4] != 1) return;
+    if (n < 16 + NAME_N || memcmp(m, "N2FS", 4) || m[4] != 1) return;
     char name[NAME_N];
     int k = 0;
     for (; k < NAME_N - 1 && m[16 + k] >= 0x20 && m[16 + k] <= 0x7e; k++) name[k] = (char)m[16 + k];
     name[k] = 0;
     if (!name[0]) return;
-    if (!(m[5] & 2)){ m[5] |= 2; send_all(m, from); }   /* the creator passes it on */
+    uint32_t skin_ip = !(m[5] & 2) ? from : n >= FS_N ?
+        (uint32_t)m[FS_N-4] << 24 | (uint32_t)m[FS_N-3] << 16 | (uint32_t)m[FS_N-2] << 8 | m[FS_N-1] : 0;
+    if (!(m[5] & 2)){
+        uint8_t relay[FS_N] = {0}; memcpy(relay, m, 16 + NAME_N); relay[5] |= 2;
+        relay[FS_N-4] = (uint8_t)(from >> 24); relay[FS_N-3] = (uint8_t)(from >> 16);
+        relay[FS_N-2] = (uint8_t)(from >> 8); relay[FS_N-1] = (uint8_t)from;
+        send_all(relay, from);
+    }
     if (!R.on) return;
     int j = 0;
     while (j < NCARS && g_fps[j].name[0] && strcmp(g_fps[j].name, name)) j++;
     if (j == NCARS) return;
     Fps *f = &g_fps[j];
+    f->skin_ip = skin_ip;
     float fps = (float)(m[6] | m[7] << 8) / 10.f;
     uint32_t longest = (uint32_t)(m[8] | m[9] << 8);
     if (!f->name[0]){ memcpy(f->name, name, NAME_N); f->lo = fps; }

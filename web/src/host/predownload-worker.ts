@@ -45,6 +45,7 @@ async function download(cfg: { manifestUrl: string; language: string; texpack: s
   const r = await fetch(cfg.manifestUrl, { cache: 'no-cache', signal: abort.signal });
   if (!r.ok) throw new Error(`the list of game files did not load (HTTP ${r.status})`);
   const m = await r.json() as Manifest;
+  if (m.localFiles) return { have: 0, total: 0 };
   const served = blockRuns(m);
   const scan = await scanCache(aheadFiles(manifestFiles(m), cfg.language, cfg.texpack));
   const total = scan.total;

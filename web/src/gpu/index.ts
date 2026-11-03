@@ -13,6 +13,7 @@
 // Triggers: Atomics.waitAsync on the game's doorbell, every rAF, and every
 // finished GPU frame.  The main thread never blocks.
 import type { GameProcess } from '../host/process';
+import { skinsFor } from '../net/skins';
 import { HostKind } from '../host/abi';
 import * as P from './proto';
 import { C, F } from './proto';
@@ -496,6 +497,7 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
       if (k) Atomics.store(U, (k + P.K_PHOTO + P.PHOTO_ACK) >>> 2, ((gen & 0xffff) << 16 | (n & 0xffff)) >>> 0);
     }
   };
+  let skinCaptureAt = 0, skinCaptureBusy = false;
   const encodeAndSubmit = (b: number) => {
     const t0 = performance.now();
     const ce = device.createCommandEncoder();
@@ -508,6 +510,12 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
     const tone = toneOf(b), ph = photoOf(b);
     if (!ph && picState !== PH_OFF) { pic?.destroy(); pic = null; }           // photo mode ended: its textures go
     picState = ph ? ph[0] : PH_OFF;
+    const skinSync = skinsFor(proc), skinU = u32();
+    const skinK = (skinU[cw + C.frame + b * (P.FRAME_BYTES >> 2) + F.k] + P.K_SKINS) >>> 2;
+    const owners: [number, number][] = [];
+    if (skinU[skinK] === P.SKINS_MAGIC) for (let i = 0; i < Math.min(skinU[skinK + 1], P.SKINS_MAX); i++) owners.push([skinU[skinK + 2 + i * 2], skinU[skinK + 3 + i * 2]]);
+    skinSync.poll(owners.filter(([, vip]) => vip !== 0).map(([, vip]) => vip));
+    enc.onlineSkins(owners, skinSync.remote);
     const st = enc.encodeFrame(b, ce, direct && !tone && !ph ? cur : undefined);
     burn?.(ce);
     const scr = enc.screen!;   // the canvas texture itself, or the back buffer
@@ -561,7 +569,15 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
     const shot = ph && (pw || dumpName) ? pic!.shot(ce, linear, look) : null;
     if (pw && !pic!.done) log(`[gpu] photo mode's picture kept as it is (${pic!.count} of ${pic!.target} frames)`);
     const waiter = pw ?? dumpWaiters.shift();
-    const reads: { name: string | null; rb: Readback; waiter?: (b: Blob) => void; mark?: boolean }[] = [];
+    const reads: { name: string | null; rb: Readback; waiter?: (b: Blob) => void; mark?: boolean; skin?: boolean }[] = [];
+    const ownSkin = owners.find(([, vip]) => vip === 0)?.[0];
+    if (skinSync.ready && ownSkin && !skinCaptureBusy && t0 - skinCaptureAt > 10000) {
+      const snap = enc.snapshot(ce, ownSkin, false);
+      if (snap && snap.tex.width === 512 && snap.tex.height === 512) {
+        skinCaptureAt = t0; skinCaptureBusy = true;
+        reads.push({ name: null, rb: copyOut(ce, snap.tex), skin: true, waiter: png => { void skinSync.publish(png).catch(x => log(`[skins] upload failed: ${x}`)); } });
+      }
+    }
     // an autotest dump keeps its frame-numbered name; a dump(name) request names its own
     if (dumpName || waiter) reads.push({ name: dumpName ?? waiter!.name, rb: shot ? copyOut(ce, shot.tex, shot) : copyOut(ce, scr), waiter: waiter?.resolve, mark: waiter?.mark });
     if (dumpName) for (const id of opts.dumpTex ?? []) {
@@ -614,7 +630,7 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
     C2[cw + C.framesDone] = frames; C2[cw + C.stDraws] = enc.totalDraws >>> 0; C2[cw + C.stPasses] = enc.totalPasses >>> 0;
     C2[cw + C.stEncUs] = Math.round(encMsTotal * 1000) >>> 0; C2[cw + C.stErrors] = errors; C2[cw + C.stPipelines] = enc.pipelinesMade;
     for (const r of reads) {
-      const job = readback(r.rb, r.mark).then(async png => {
+      const job = readback(r.rb, r.mark, r.skin ? 1 : undefined, r.skin).then(async png => {
         r.waiter?.(png);
         if (!r.name) return;
         let where = '';
@@ -624,7 +640,7 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
         }
         log(`[gpu] dump ${r.name}.png ${r.rb.w}x${r.rb.h}${where}`);
         if (r.name === dumpName) { const C3 = u32(); C3[cw + C.dumpsDone]++; }
-      }).catch(x => log(`[gpu] dump failed: ${x}`));
+      }).catch(x => log(`[gpu] dump failed: ${x}`)).finally(() => { if (r.skin) skinCaptureBusy = false; });
       pending.add(job); job.finally(() => pending.delete(job));
     }
   };
@@ -664,7 +680,7 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
   // the PNG is made in a worker (png-worker.ts), started at the first dump: here the frame is only copied out
   let pngWorker: Worker | null = null, pngNext = 0;
   const pngWaiting = new Map<number, { resolve: (b: Blob) => void; reject: (e: Error) => void }>();
-  async function readback(rb: Readback, mark?: boolean): Promise<Blob> {
+  async function readback(rb: Readback, mark?: boolean, scale?: number, preserveAlpha = false): Promise<Blob> {
     await rb.buf.mapAsync(GPUMapMode.READ);
     const px = rb.buf.getMappedRange().slice(0);
     rb.buf.unmap(); rb.buf.destroy();
@@ -677,7 +693,7 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
       };
       w.onerror = e => { for (const p of pngWaiting.values()) p.reject(new Error(e.message || 'the PNG worker failed')); pngWaiting.clear(); };
     }
-    const id = pngNext++, msg: ToPng = { id, px, w: rb.w, h: rb.h, bpr: rb.bpr, scale: opts.dumpScale ?? 1, mark };
+    const id = pngNext++, msg: ToPng = { id, px, w: rb.w, h: rb.h, bpr: rb.bpr, scale: scale ?? opts.dumpScale ?? 1, mark, preserveAlpha };
     return new Promise((resolve, reject) => {
       pngWaiting.set(id, { resolve, reject });
       pngWorker!.postMessage(msg, [px]);

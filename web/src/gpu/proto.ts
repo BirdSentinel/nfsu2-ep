@@ -22,6 +22,8 @@ export const K_LAT = 1568, LAT_BYTES = 24, LAT_MAGIC = 0x4E54414C;
 // magic, state (0 off, 1 the frame as it is, 2 frame n of target frames of still picture gen, 3 it has them, 4 the frame as it is is the picture), n, target,
 // gen; at PHOTO_ACK the page's answer in both buffers' blocks: gen << 16 | the frames of it the page has
 export const K_PHOTO = 1600, PHOTO_BYTES = 32, PHOTO_MAGIC = 0x544F4850, PHOTO_ACK = 20;
+// Optional online skin ownership: magic, n, then n {texture id, VIP}; VIP 0 is local.
+export const K_SKINS = 1632, SKINS_MAGIC = 0x534b494e, SKINS_MAX = 49;
 // the VS constant arena is bound in windows of this many 16-byte rows (GW_KWIN_ROWS)
 export const KWIN_ROWS = 4096;
 

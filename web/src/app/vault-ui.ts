@@ -20,6 +20,7 @@
 import { exists, filesOf, listFiles, listProfiles, readBeside, readBytes, readText, removeSaveDir, UndoPending, writeBeside, writeFile, type BesideFile } from './savefs';
 import { backupItems, leftOut, profilesComing, readVault, refillSaves, repairNotes, restoreVault, type Restore } from './saves-ui';
 import { downloadBlob } from './logs';
+import { serverStorageKey } from './desktop';
 import { unzip, zip } from './zip';
 import { contentHash, kept, keeps, keptBy, keysOf, profilesIn, readPhrase, sideOf, vaultAvailable, VaultError, VaultSync, type Link, type Remote, type SaveFile, type Side, type SyncState } from './vault';
 import { codeOf, dateLocale, listOf, live, N, t, tn, tvars, type Msg } from './i18n';
@@ -46,15 +47,15 @@ export interface VaultPanelDeps {
 }
 
 /** where a save folder's link is kept (localStorage) */
-const linkKey = (saveDir: string) => `nfsu2-keyphrase:${saveDir}`;
+const linkKey = (saveDir: string) => serverStorageKey(`nfsu2-keyphrase:${saveDir}`);
 /** how long Play waits for the section to know whether this server keeps cloud saves (`started`) */
 const READY_WAIT_MS = 5000;
 /** how often Play offered cloud saves for it, and when last (localStorage, Offer as JSON) */
-const offerKey = (saveDir: string) => `nfsu2-cloud-offer:${saveDir}`;
+const offerKey = (saveDir: string) => serverStorageKey(`nfsu2-cloud-offer:${saveDir}`);
 /** which phrase the browser was asked to keep in its passwords (pwkeep.ts markOf); 'asked' once the browser was asked
  *  for one with its chooser and gave none, 'no:<mark>' when the player turned down the saves of the one it gave
  *  (localStorage) */
-const keptKey = (saveDir: string) => `nfsu2-keyphrase-kept:${saveDir}`;
+const keptKey = (saveDir: string) => serverStorageKey(`nfsu2-keyphrase-kept:${saveDir}`);
 /** Play offers cloud saves again this long after a Not now, and this often at most (2026-10-31: it was once, at the
  *  fifth Play) */
 const OFFER_AGAIN_MS = 7 * 86400_000;
