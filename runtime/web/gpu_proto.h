@@ -39,7 +39,7 @@ typedef struct {
     uint32_t depth;       /* bit0 Z test, bit1 Z write, bits 2-4 D3DCMPFUNC, bits 8+ Z surface id */
     uint32_t tex1, tex2, tex3;
     int32_t  ps;          /* pixel shader id (0 = fixed function), +256 = stage-0 cube variant */
-    uint32_t psci;        /* low 31 bits: PS block index; high bit: blue world-marker theme */
+    uint32_t psci;        /* low 30 bits: PS block index; top two: blue world-marker theme */
     int32_t  vsid;        /* GPU vertex shader id (0 = TVert path) */
     uint32_t rawoff;      /* raw arena byte offset (raw draw) or pool offset of vertex 0 (indexed) */
     uint32_t koff;        /* VS constant block offset in the K arena (16-byte aligned) */

@@ -301,7 +301,7 @@ static uint8_t g_blue_candidate[TEXREP_MAXTEX];
 /* Draw-time theme for the locked-road barrier and neon edges, information sign and ground rings.
  * The latter is white in the texture and coloured by the game's vertices. */
 static uint8_t g_world_blue[TEXREP_MAXTEX];
-int texrep_world_blue(unsigned mid){ return mid < TEXREP_MAXTEX && g_world_blue[mid] == 2; }
+int texrep_world_blue(unsigned mid){ return mid < TEXREP_MAXTEX && g_world_blue[mid] >= 2 ? g_world_blue[mid] - 1 : 0; }
 static void world_blue_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
     if (!mid || mid >= TEXREP_MAXTEX || !g_world_blue[mid] || level) return;
     crc_init();
@@ -314,6 +314,13 @@ static void world_blue_uploaded(unsigned mid, unsigned level, const uint8_t *dat
                          (n == 16384 && crc == 0x67e16458u && adler == 0xfca14830u) ||
                          /* SFX_NEONBARB frames both locked-road and race arrow barriers. */
                          (n == 2048 && crc == 0xc05824bdu && adler == 0x5010b1beu)) ? 2 : 1;
+    /* Barrier panels also contain nearly neutral burgundy/brown pixels.
+     * Include these subtle tints, not only the saturated red highlights. */
+    if ((n == 8192 && crc == 0x375ec9e2u && adler == 0x17bdd3beu) ||
+        (n == 4096 && crc == 0xd7e1e3dfu && adler == 0x7acab855u) ||
+        (n == 32768 && crc == 0xe836acf4u && adler == 0xb6daa78bu) ||
+        (n == 16384 && crc == 0x67e16458u && adler == 0xfca14830u) ||
+        (n == 2048 && crc == 0xc05824bdu && adler == 0x5010b1beu)) g_world_blue[mid] = 3;
 }
 static int blue_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
     if (!mid || mid >= TEXREP_MAXTEX || !g_blue_candidate[mid] || level) return 0;
@@ -460,7 +467,8 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     (void)usage; (void)pool;
     cp_gone(mid);
     if (mid && mid < TEXREP_MAXTEX){
-        g_world_blue[mid] = d3dfmt == 0x33545844u && ((w == 256 && h == 128) || (w == 128 && (h == 64 || h == 128)) || (w == 64 && h == 32));
+        g_world_blue[mid] = (d3dfmt == 0x33545844u && ((w == 256 && h == 128) || (w == 128 && (h == 64 || h == 128)) || (w == 64 && (h == 32 || h == 64)))) ||
+                            (d3dfmt == 0x31545844u && w == 256 && h == 64);
         g_blue_candidate[mid] = 0;
         for (unsigned i = 0; i < sizeof blue_ui / sizeof blue_ui[0]; i++)
             if (w == blue_ui[i].w && h == blue_ui[i].h && d3dfmt == blue_ui[i].fmt) g_blue_candidate[mid] |= 1u << i;

@@ -649,8 +649,8 @@ static GwDraw *rec_draw(Buf *B, unsigned tex){
     D->blend = g_cur_blend; D->aref = g_cur_aref; D->depth = g_cur_depth;
     D->tex1 = g_cur_tex1; D->tex2 = g_cur_tex2; D->tex3 = g_cur_tex3;
     D->ps = ps_of(tex); D->psci = psc_put(B);
-    /* High bit is a draw-local colour theme; low bits retain the PS block. */
-    if (texrep_world_blue(tex)) D->psci |= 0x80000000u;
+    /* Top two bits select a draw-local colour theme; low bits retain the PS block. */
+    D->psci |= (uint32_t)texrep_world_blue(tex) << 30;
     memcpy(D->proj, g_cur_proj, sizeof D->proj);
     memcpy(D->smp, g_cur_smp, sizeof D->smp);
     D->bcol = g_cur_bcol; D->cull = g_cur_cull;

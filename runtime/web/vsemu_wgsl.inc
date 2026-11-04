@@ -121,7 +121,8 @@ static const char W_PSPAR[] =
     "fn ps_end(c: vec4f, fog: f32) -> vec4f {\n"
     "  if (ALPHA_FUNC != 8u) { if (!alpha_pass(c.a, P.aref)) { discard; } }\n"
     "  var rgb = c.rgb;\n"
-    "  if (P.pad0 > 0.5 && c.r > c.g * 1.2 && c.r > c.b * 1.2) { rgb = vec3f(24.0, 148.0, 202.0) * (c.r / 255.0); }\n"
+    "  let redRatio = select(1.2, 1.005, P.pad0 > 1.5);\n"
+    "  if (P.pad0 > 0.5 && c.r > c.g * redRatio && c.r > c.b * redRatio) { rgb = vec3f(24.0, 148.0, 202.0) * (c.r / 255.0); }\n"
     "  return vec4f(mix(P.fog.rgb, rgb, mix(1.0, saturate(fog), P.fog.a)), c.a);\n"
     "}\n"
     /* ps_1_x coordinate of stage k: P.proj[k] = coordIndex + 16*projMode,

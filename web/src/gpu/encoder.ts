@@ -812,9 +812,9 @@ export class Encoder {
       if (same) for (let q = 0; q < 4; q++) if (lastPF[q] !== f32[w + D.proj + q] || lastPF[4 + q] !== f32[w + D.fogv + q]) { same = false; break; }
       if (!same) {
         const o = pslots * (PSLOT / 4);
-        ps[o] = aref; ps[o + 1] = 0; ps[o + 2] = psci >>> 31; ps[o + 3] = 0;
+        ps[o] = aref; ps[o + 1] = 0; ps[o + 2] = psci >>> 30; ps[o + 3] = 0;
         for (let q = 0; q < 4; q++) { ps[o + 4 + q] = lastPF[q] = f32[w + D.proj + q]; ps[o + 136 + q] = lastPF[4 + q] = f32[w + D.fogv + q]; }
-        const constantsIndex = psci & 0x7fffffff;
+        const constantsIndex = psci & 0x3fffffff;
         ps.set(f32.subarray(pscW + constantsIndex * 128, pscW + constantsIndex * 128 + 128), o + 8);
         lastPsci = psci; lastAref = aref; pslots++;
       }
