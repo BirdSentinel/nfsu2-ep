@@ -1248,5 +1248,22 @@
   "Playing with others waits for another name: change it under Online on the start page.": "Másokkal csak másik névvel játszhatsz: ezt a kezdőlap Online részében változtathatod meg.",
   "{name} isn't allowed here.": "Ez a név itt nem engedélyezett: {name}.",
   "Pick another name to keep playing with others.": "Válassz másik nevet, hogy továbbra is játszhass másokkal.",
-  "Pick another name": "Válassz másik nevet"
+  "Pick another name": "Válassz másik nevet",
+  "Create a 100% save": "100%-os mentés létrehozása",
+  "Create 100% save": "100%-os mentés készítése",
+  "Profile name": "Profilnév",
+  "Use 1–7 letters (A–Z) or digits. Creates a new profile from the included 100% save.": "Adj meg 1–7 betűt (A–Z) vagy számot. A mellékelt 100%-os mentésből új profil készül.",
+  "Created the 100% save for {name}.": "Elkészült a 100%-os mentés: {name}.",
+  "Archive": "Archiválás",
+  "Archive {name}": "{name} archiválása",
+  "Archived saves": "Archivált mentések",
+  "No archived saves.": "Nincsenek archivált mentések.",
+  "Archived saves stay on this device and do not appear in the game. Restore one to play it again.": "Az archivált mentések ezen az eszközön maradnak, és nem jelennek meg a játékban. Állítsd vissza a mentést, ha újra játszanál vele.",
+  "Restore archived {name}": "Archivált {name} visszaállítása",
+  "Delete archived {name}": "Archivált {name} törlése",
+  "Delete archived save?": "Törlöd az archivált mentést?",
+  "Permanently delete the archived save {name}?": "Véglegesen törlöd ezt az archivált mentést: {name}?",
+  "Archived {name}. It will not appear in the game.": "{name} archiválva. Nem jelenik meg a játékban.",
+  "Restored {name} to active profiles.": "{name} visszaállítva az aktív profilok közé.",
+  "Deleted archived save {name}.": "Az archivált mentés törölve: {name}."
 }

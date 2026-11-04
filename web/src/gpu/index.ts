@@ -454,10 +454,8 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
   // (within 2 pixels, as the composite's aspect-fit would have it fill the canvas), the canvas's own size becomes the
   // picture's, the frame draws straight into it (Encoder.encodeFrame's direct path), and CSS stretches the canvas over
   // its box: the browser's compositor scales it as it puts the page on the screen anyway.  Another shape (a picture
-  // pillarboxed in the view) or the full scale: the canvas at the view's size, as before.  The full scale includes an
-  // odd view's picture, a row or column short (the game draws even sizes, gpu_web.c view_wh): stretched by that one
-  // pixel, every row of the picture was resampled, 1-pixel lines grey in the middle of the screen (a player's
-  // 2560x1305 window showed shimmering lines).
+  // pillarboxed in the view) or the full scale: keep the canvas at the view's size. Native rendering now preserves
+  // odd dimensions too, so it remains pixel-for-pixel without resampling or an uncovered row/column.
   const fitPicture = (b: number) => {
     if (opts.cssScale === false) return;
     const U = u32(), fw = cw + C.frame + b * (P.FRAME_BYTES >> 2), bw = U[fw + F.bbW], bh = U[fw + F.bbH];

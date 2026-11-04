@@ -36,12 +36,24 @@ def main():
             data = t.jdlz(data)
         for nh, w, h, fmt, pixels in t.textures(data):
             name = names.get(nh, '')
-            if not (name.startswith('ADS_') or name.startswith('SGN_BILLBOARD')) or not pixels:
+            burgerking = 'BURGERKING' in name or name == 'SGN_HAVEITYOURWAY_RB'
+            if not (name.startswith('ADS_') or name.startswith('SGN_BILLBOARD') or burgerking
+                    or name == 'SGN_LI_POSTER04') or not pixels:
                 continue
             crc, adler = zlib.crc32(pixels), zlib.adler32(pixels)
             key = (nh, w, h, fmt, crc, adler)
             if key in entries:
                 continue
+            # The pole sign and one storefront slot share identical pixels.
+            # Upload matching cannot distinguish them: expose one editable PNG.
+            if burgerking:
+                shared = next((e for e in entries.values() if e.get('folder') == 'burgerking'
+                               and (e['width'], e['height'], e['format'], e['crc'], e['adler'])
+                               == (w, h, fmt, crc, adler)), None)
+                if shared:
+                    if name != shared['name'] and name not in shared.setdefault('aliases', []):
+                        shared['aliases'].append(name)
+                    continue
             filename = f'{re.sub("[^A-Za-z0-9_-]", "_", name)}_{nh:08x}_{crc:08x}.png'
             if fmt == 21:
                 im = Image.frombytes('RGBA', (w, h), pixels, 'raw', 'BGRA')
@@ -52,10 +64,13 @@ def main():
                 im = Image.open(io.BytesIO(header + pixels)).convert('RGBA')
             else:
                 raise ValueError(f'Unsupported billboard format {fmt}: {name}')
-            if not (output / filename).exists():
-                im.save(output / filename)
+            folder = 'burgerking' if burgerking else 'billboards'
+            destination = output.parent / folder
+            destination.mkdir(parents=True, exist_ok=True)
+            if not (destination / filename).exists():
+                im.save(destination / filename)
             entries[key] = dict(file=filename, name=name, hash=nh, width=w, height=h,
-                                format=fmt, crc=crc, adler=adler, bytes=len(pixels))
+                                format=fmt, crc=crc, adler=adler, bytes=len(pixels), folder=folder)
     catalog = sorted(entries.values(), key=lambda e: e['file'])
     assert catalog and any('OLD_SPICE' in e['name'] for e in catalog)
     Path('desktop/billboards.json').write_text(json.dumps(catalog, indent=2) + '\n')

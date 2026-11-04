@@ -8,7 +8,8 @@
     "format": 827611204,
     "crc": 3354775667,
     "adler": 2758244505,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_AUTOZONE_BBH_B_eabda1d7_b2e012ae.png",
@@ -19,7 +20,8 @@
     "format": 827611204,
     "crc": 3001029294,
     "adler": 2754859204,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_BESTBUY_BBH_A_de510e5f_df468707.png",
@@ -30,7 +32,8 @@
     "format": 827611204,
     "crc": 3745941255,
     "adler": 85609634,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "billboards"
   },
   {
     "file": "ADS_BESTBUY_BBH_A_de510e5f_ff9557bc.png",
@@ -41,7 +44,8 @@
     "format": 827611204,
     "crc": 4287977404,
     "adler": 4283540458,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "billboards"
   },
   {
     "file": "ADS_BURGERKING_BBH_A2_321f4b03_b0b95664.png",
@@ -52,7 +56,8 @@
     "format": 827611204,
     "crc": 2964936292,
     "adler": 197098276,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "burgerking"
   },
   {
     "file": "ADS_BURGERKING_BBH_A3_321f4b04_66e7af19.png",
@@ -63,7 +68,8 @@
     "format": 827611204,
     "crc": 1726459673,
     "adler": 2233448228,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "burgerking"
   },
   {
     "file": "ADS_BURGERKING_BBH_A_1108b4b1_f7a4f326.png",
@@ -74,7 +80,8 @@
     "format": 827611204,
     "crc": 4154782502,
     "adler": 1158944127,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "burgerking"
   },
   {
     "file": "ADS_BURGERKING_SFRONT_A_4a57e554_d8d584ff.png",
@@ -85,7 +92,11 @@
     "format": 827611204,
     "crc": 3637871871,
     "adler": 3866270484,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "burgerking",
+    "aliases": [
+      "SGN_BURGERKING_A_RB"
+    ]
   },
   {
     "file": "ADS_BURGERKING_SFRONT_B_4a5871b5_ccb29ead.png",
@@ -96,7 +107,8 @@
     "format": 861165636,
     "crc": 3434258093,
     "adler": 1614938692,
-    "bytes": 8192
+    "bytes": 8192,
+    "folder": "burgerking"
   },
   {
     "file": "ADS_BURGERKING_SFRONT_C_4a58fe16_7dcf92c1.png",
@@ -107,7 +119,8 @@
     "format": 827611204,
     "crc": 2110755521,
     "adler": 1786122011,
-    "bytes": 8192
+    "bytes": 8192,
+    "folder": "burgerking"
   },
   {
     "file": "ADS_CAMPBELLS_BBH_A2_97ccfd06_d3aa2f53.png",
@@ -118,7 +131,8 @@
     "format": 827611204,
     "crc": 3551145811,
     "adler": 2693937355,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_CAMPBELLS_BBH_A_78f6b254_e7224886.png",
@@ -129,7 +143,8 @@
     "format": 827611204,
     "crc": 3877783686,
     "adler": 3295078563,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "billboards"
   },
   {
     "file": "ADS_CINGULARSF_BBH_A_b8329eef_00b4aacb.png",
@@ -140,7 +155,8 @@
     "format": 827611204,
     "crc": 11840203,
     "adler": 2707515427,
-    "bytes": 8192
+    "bytes": 8192,
+    "folder": "billboards"
   },
   {
     "file": "ADS_CINGULAR_BBH_A3_cc3fb569_7720468e.png",
@@ -151,7 +167,8 @@
     "format": 827611204,
     "crc": 1998603918,
     "adler": 1189670073,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_CINGULAR_BBH_A_cfe2e676_11a92f61.png",
@@ -162,7 +179,8 @@
     "format": 827611204,
     "crc": 296300385,
     "adler": 3574395980,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_CINGULAR_BBV_A_cfe32204_d9151d7e.png",
@@ -173,7 +191,8 @@
     "format": 827611204,
     "crc": 3642039678,
     "adler": 1888576459,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_D3AUTOMOTIVE_BBH_A2_052c1e57_4be3121e.png",
@@ -184,7 +203,8 @@
     "format": 827611204,
     "crc": 1273172510,
     "adler": 1008990421,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_FORMULAD_DRIFT_A_763b1588_6db9948f.png",
@@ -195,7 +215,8 @@
     "format": 827611204,
     "crc": 1840878735,
     "adler": 2794698179,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "billboards"
   },
   {
     "file": "ADS_FORMULAD_DRIFT_B_763b1589_686fbf7e.png",
@@ -206,7 +227,8 @@
     "format": 827611204,
     "crc": 1752153982,
     "adler": 2470927617,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_ING_DIRECT_BBH_A_ffb28f19_349d926b.png",
@@ -217,7 +239,8 @@
     "format": 827611204,
     "crc": 882741867,
     "adler": 81390154,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_JAPAN_TUNING_BBH_A_943fb29f_32574e91.png",
@@ -228,7 +251,8 @@
     "format": 827611204,
     "crc": 844582545,
     "adler": 3850580435,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_PNG_OLD_SPICE_BBH_A_fea8f5ea_3dc7f5ee.png",
@@ -239,7 +263,8 @@
     "format": 827611204,
     "crc": 1036514798,
     "adler": 1662114469,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "billboards"
   },
   {
     "file": "ADS_PNG_OLD_SPICE_BBH_A_fea8f5eb_67356eae.png",
@@ -250,7 +275,8 @@
     "format": 827611204,
     "crc": 1731554990,
     "adler": 1454759230,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_PNG_OLD_SPICE_BBH_A_fea8f5ec_c795050f.png",
@@ -261,7 +287,8 @@
     "format": 827611204,
     "crc": 3348432143,
     "adler": 3553237800,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_PNG_OLD_SPICE_BBH_A_fff59ad7_a4e9b16f.png",
@@ -272,7 +299,8 @@
     "format": 827611204,
     "crc": 2766778735,
     "adler": 3542113262,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_PONTIAC_LOGO_A_BBH_5b7ba1bf_3764d4c3.png",
@@ -283,7 +311,8 @@
     "format": 827611204,
     "crc": 929354947,
     "adler": 818157152,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_PONTIAC_LOGO_B_BBH_5b8dba40_3e6589d0.png",
@@ -294,7 +323,8 @@
     "format": 827611204,
     "crc": 1046841808,
     "adler": 2016263142,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_SE_JOHNSONS_EDGE_BB_56fc323e_9005ebec.png",
@@ -305,7 +335,8 @@
     "format": 827611204,
     "crc": 2416307180,
     "adler": 3649126340,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
   },
   {
     "file": "ADS_VOLKSWAGON_BBH_A_49537a6c_d00767b3.png",
@@ -316,7 +347,92 @@
     "format": 827611204,
     "crc": 3490146227,
     "adler": 1905751143,
-    "bytes": 32768
+    "bytes": 32768,
+    "folder": "billboards"
+  },
+  {
+    "file": "ARC_BURGERKING_A_RB_f7239457_11b2492d.png",
+    "name": "ARC_BURGERKING_A_RB",
+    "hash": 4146304087,
+    "width": 256,
+    "height": 256,
+    "format": 827611204,
+    "crc": 296896813,
+    "adler": 1233810565,
+    "bytes": 32768,
+    "folder": "burgerking"
+  },
+  {
+    "file": "ARC_BURGERKING_B_RB_f72420b8_240dde1c.png",
+    "name": "ARC_BURGERKING_B_RB",
+    "hash": 4146340024,
+    "width": 256,
+    "height": 256,
+    "format": 827611204,
+    "crc": 604888604,
+    "adler": 668077795,
+    "bytes": 32768,
+    "folder": "burgerking"
+  },
+  {
+    "file": "ARC_BURGERKING_C_RB_f724ad19_4fa75d8b.png",
+    "name": "ARC_BURGERKING_C_RB",
+    "hash": 4146375961,
+    "width": 256,
+    "height": 256,
+    "format": 827611204,
+    "crc": 1336368523,
+    "adler": 1229623371,
+    "bytes": 32768,
+    "folder": "burgerking"
+  },
+  {
+    "file": "ARC_BURGERKING_D_RB_f725397a_1a35e913.png",
+    "name": "ARC_BURGERKING_D_RB",
+    "hash": 4146411898,
+    "width": 256,
+    "height": 256,
+    "format": 827611204,
+    "crc": 439740691,
+    "adler": 854738403,
+    "bytes": 32768,
+    "folder": "burgerking"
+  },
+  {
+    "file": "ARC_BURGERKING_E_RB_f725c5db_aad7cd67.png",
+    "name": "ARC_BURGERKING_E_RB",
+    "hash": 4146447835,
+    "width": 256,
+    "height": 256,
+    "format": 827611204,
+    "crc": 2866269543,
+    "adler": 3342058608,
+    "bytes": 32768,
+    "folder": "burgerking"
+  },
+  {
+    "file": "ARC_BURGERKING_F_RB_f726523c_d3dda060.png",
+    "name": "ARC_BURGERKING_F_RB",
+    "hash": 4146483772,
+    "width": 256,
+    "height": 256,
+    "format": 827611204,
+    "crc": 3554517088,
+    "adler": 824115362,
+    "bytes": 32768,
+    "folder": "burgerking"
+  },
+  {
+    "file": "LOD_BURGERKING_RB_a8a20100_85e6cbc7.png",
+    "name": "LOD_BURGERKING_RB",
+    "hash": 2829189376,
+    "width": 64,
+    "height": 64,
+    "format": 827611204,
+    "crc": 2246495175,
+    "adler": 714652204,
+    "bytes": 2048,
+    "folder": "burgerking"
   },
   {
     "file": "SGN_BILLBOARD_GRAFB_26361d52_2037c45e.png",
@@ -327,6 +443,31 @@
     "format": 827611204,
     "crc": 540525662,
     "adler": 3336191905,
-    "bytes": 16384
+    "bytes": 16384,
+    "folder": "billboards"
+  },
+  {
+    "file": "SGN_HAVEITYOURWAY_RB_21bc26fa_fbd3fcba.png",
+    "name": "SGN_HAVEITYOURWAY_RB",
+    "hash": 565978874,
+    "width": 128,
+    "height": 64,
+    "format": 827611204,
+    "crc": 4224974010,
+    "adler": 4210489815,
+    "bytes": 4096,
+    "folder": "burgerking"
+  },
+  {
+    "file": "SGN_LI_POSTER04_023dce7b_4dec218b.png",
+    "name": "SGN_LI_POSTER04",
+    "hash": 37604987,
+    "width": 128,
+    "height": 64,
+    "format": 827611204,
+    "crc": 1307320715,
+    "adler": 2667824442,
+    "bytes": 4096,
+    "folder": "billboards"
   }
 ]

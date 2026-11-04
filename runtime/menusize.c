@@ -224,11 +224,15 @@ static void blue_accent(uint32_t o, unsigned depth){
         uint32_t type = MR32(o + O_TYPE), d = MR32(o + O_DATA);
         if (type == T_STRING) music_brand(o);
         if ((type == T_IMAGE || type == T_STRING) && ok(d, 16)){
-            /* The HUD phone, mail and selected D-pad triangle are white
+            /* The HUD phone, mail, selected D-pad triangle and minimap north
+             * indicator are white
              * textures tinted by FEng. Use the
-             * launcher's #1894CA, keeping its existing fade/visibility. */
+             * launcher's #1894CA, keeping its existing fade/visibility.
+             * 3rdPersonGear is reapplied every frame: shift animations
+             * otherwise turn this label orange again. */
             uint32_t tex = type == T_IMAGE ? MR32(o + 0x24u) : 0;
-            if (tex == 0x6fff0767u || tex == 0x4b9b8f5au || tex == 0xc3f846b5u){
+            if (tex == 0x6fff0767u || tex == 0x4b9b8f5au || tex == 0xc3f846b5u || tex == 0xf2a54430u ||
+                (type == T_STRING && MR32(o + O_HASH) == 0xb84589beu)){
                 if (MR32(d) != 202 || MR32(d + 4) != 148 || MR32(d + 8) != 24){
                     MR32(d) = 202; MR32(d + 4) = 148; MR32(d + 8) = 24;
                     MR32(o + O_FLAGS) |= F_DIRTY;

@@ -351,7 +351,7 @@ static void modes_refresh(void){
     if (maxpix > 1.0e5 && dw * dh > maxpix){ double k = sqrt(maxpix / (dw * dh)); dw *= k; dh *= k; }
     dw *= up; dh *= up;
     if (dw > 8192.0 || dh > 8192.0){ double k = 8192.0 / (dw > dh ? dw : dh); dw *= k; dh *= k; }
-    unsigned w = (unsigned)dw & ~1u, h = (unsigned)dh & ~1u;
+    unsigned w = (unsigned)dw, h = (unsigned)dh;
     g_modes[ROW_NATIVE][0] = w; g_modes[ROW_NATIVE][1] = h;
     /* The 4K row only if the display can show it (screen row >= 2160).
      * On a smaller display (MacBook ~3K) 4K was shown downscaled: ~1.6x
@@ -1311,7 +1311,14 @@ static void res_pick(uint32_t gw, uint32_t gh, uint32_t *dw, uint32_t *dh){
     int row = tbl_row(gw, gh);
     g_cur_row = row;
     if (modemap_on()) modes_refresh();                 /* screen row + menu strings */
-    if (!pinned && row >= 0 && modemap_on()){
+    const char *window_native = ENVC("NFSU2_WINDOW_NATIVE");
+    if (window_native && window_native[0] == '1'){
+        /* Desktop: exact client pixels, including odd sizes. Re-evaluated
+         * on Reset, so maximizing and resizing never leave an unused edge. */
+        void metal_view_size(unsigned*, unsigned*);
+        metal_view_size(&aw, &ah);
+    }
+    else if (!pinned && row >= 0 && modemap_on()){
         aw = g_modes[row][0]; ah = g_modes[row][1];
         fprintf(stderr,"com: menu row %d -> %ux%u\n", row + 1, aw, ah);
     }

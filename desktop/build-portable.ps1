@@ -46,7 +46,9 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/ep-games.png') -Destinat
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular.png') -Destination (Join-Path $output 'custom/cingular.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular-text.png') -Destination (Join-Path $output 'custom/cingular-text.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/budapest.png') -Destination (Join-Path $output 'custom/budapest.png')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/license-plate.png') -Destination (Join-Path $output 'custom/license-plate.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/billboards') -Destination (Join-Path $output 'custom/billboards') -Recurse
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/burgerking') -Destination (Join-Path $output 'custom/burgerking') -Recurse
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/menu-background.png'), (Join-Path $PSScriptRoot 'assets/menu-floor.png') -Destination (Join-Path $output 'custom')
 $game = Join-Path $output 'game'
 New-Item -ItemType Directory -Path $game | Out-Null

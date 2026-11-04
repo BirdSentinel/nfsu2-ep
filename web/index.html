@@ -113,6 +113,15 @@
         </div>
         <p class="msg" id="saves-msg" role="status"></p>
         <ul class="profiles" id="profiles" data-i18n-attr="aria-label" aria-label="Profiles in this browser"></ul>
+        <h3 data-i18n>Create a 100% save</h3>
+        <form class="row" id="complete-save-form">
+          <input id="complete-save-name" type="text" maxlength="7" pattern="[A-Za-z0-9]{1,7}" required autocomplete="off" spellcheck="false" placeholder="Profile name" aria-label="Profile name" aria-describedby="complete-save-help" data-i18n-attr="placeholder aria-label">
+          <button class="btn" id="complete-save-create" type="submit" data-i18n>Create 100% save</button>
+        </form>
+        <p class="hint" id="complete-save-help" data-i18n>Use 1–7 letters (A–Z) or digits. Creates a new profile from the included 100% save.</p>
+        <div class="panel-head sub"><h3 data-i18n>Archived saves</h3></div>
+        <p class="hint" data-i18n>Archived saves stay on this device and do not appear in the game. Restore one to play it again.</p>
+        <ul class="profiles" id="save-archives" aria-label="Archived saves" data-i18n-attr="aria-label"></ul>
         <p class="hint" data-i18n-html>To save while playing: <span class="key-only"><kbd>Esc</kbd> or </span><kbd>Start</kbd> &gt; Garage &gt; Save</p>
         <div class="panel-head sub">
           <h3 data-i18n>Screenshots</h3>

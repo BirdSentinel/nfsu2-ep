@@ -6,7 +6,7 @@ const catalog = require('./billboards.json');
 function prepareBillboards(root, data, decodePNG) {
   if (!decodePNG) return;
   for (const entry of catalog) {
-    const file = path.join(root, 'custom', 'billboards', entry.file);
+    const file = path.join(root, 'custom', entry.folder || 'billboards', entry.file);
     if (!fs.existsSync(file)) continue;
     try {
       const rgba = decodePNG(fs.readFileSync(file), entry.width, entry.height);

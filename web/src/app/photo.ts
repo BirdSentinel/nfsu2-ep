@@ -67,11 +67,8 @@ const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 
 
 type Hint = [string, string];
 
-const MARK_STORE = 'nfsu2-photo-mark';
-/** F12 pictures carry the site's address in a corner (png-worker.ts), unless the panel's box turned it off */
-export function photoMark(): boolean {
-  try { return localStorage.getItem(MARK_STORE) !== 'off'; } catch { return true; }
-}
+/** Screenshots are always exported without an added caption or watermark. */
+export function photoMark(): boolean { return false; }
 
 export class PhotoMode {
   private root: HTMLElement;
@@ -88,7 +85,6 @@ export class PhotoMode {
   private grid: HTMLInputElement;
   private names: HTMLInputElement;
   private freeze: HTMLInputElement;
-  private mark: HTMLInputElement;
   private shootBtn: HTMLButtonElement;
   private hints: HTMLElement;
   private session: GameSession | null = null;
@@ -130,7 +126,6 @@ export class PhotoMode {
       '<label class="ph-check"><input type="checkbox" class="ph-grid"><span class="ph-grid-l"></span></label>' +
       '<label class="ph-check ph-names-c" hidden><input type="checkbox" class="ph-names"><span class="ph-names-l"></span></label>' +
       '<label class="ph-check"><input type="checkbox" class="ph-freeze"><span class="ph-freeze-l"></span></label>' +
-      '<label class="ph-check"><input type="checkbox" class="ph-mark"><span class="ph-mark-l"></span></label>' +
       '<div class="ph-buttons"><button type="button" data-act="reset"></button>' +
       '<button type="button" class="ph-shoot" data-act="shoot"></button><button type="button" data-act="leave"></button></div>' +
       '<div class="ph-hints"></div>';
@@ -138,9 +133,8 @@ export class PhotoMode {
     this.zoom = q('.ph-zoom'); this.tilt = q('.ph-tilt'); this.blur = q('.ph-blur'); this.focus = q('.ph-focus');
     this.exposure = q('.ph-exposure'); this.vignette = q('.ph-vignette');
     this.filter = q('.ph-filter'); this.crop = q('.ph-crop'); this.cars = q('.ph-cars');
-    this.grid = q('.ph-grid'); this.names = q('.ph-names'); this.freeze = q('.ph-freeze'); this.mark = q('.ph-mark');
+    this.grid = q('.ph-grid'); this.names = q('.ph-names'); this.freeze = q('.ph-freeze');
     this.shootBtn = q('.ph-shoot'); this.hints = q('.ph-hints');
-    this.mark.checked = photoMark();
     const k = this.kept;
     this.blur.value = String(k.blur); this.exposure.value = String(k.exposure); this.vignette.value = String(k.vignette);
     this.grid.checked = k.grid; this.freeze.checked = k.freeze;
@@ -176,11 +170,6 @@ export class PhotoMode {
     this.names.addEventListener('change', () => { this.send(PH_NAMES, this.names.checked ? 1 : 0); back(); });
     this.freeze.addEventListener('change', () => {
       this.kept.freeze = this.freeze.checked; this.keep(); this.send(PH_FREEZE, this.kept.freeze ? 1 : 0); this.lens(); back();
-    });
-    this.mark.addEventListener('change', () => {
-      try { if (this.mark.checked) localStorage.removeItem(MARK_STORE); else localStorage.setItem(MARK_STORE, 'off'); } catch { /* not kept: a private window */ }
-      this.deps.log(`[app] photo mode: the site's address on pictures ${this.mark.checked ? 'on' : 'off'}`);
-      back();
     });
     const f = this.flash = document.createElement('div');
     f.className = 'photo-flash'; f.hidden = true;          // (hidden by a timer: with reduced motion no animation ends)
@@ -368,7 +357,6 @@ export class PhotoMode {
     q('.ph-names-l').textContent = t('Names');
     (q('.ph-names-c') as HTMLElement).hidden = !this.namesHere;
     q('.ph-freeze-l').textContent = t('Freeze time');
-    q('.ph-mark-l').textContent = t('nfsu2.xyz on pictures');
     q('[data-act="reset"]').textContent = t('Reset');
     q('[data-act="shoot"]').textContent = t('Take photo');
     q('[data-act="leave"]').textContent = t('Leave');

@@ -10,6 +10,8 @@
 
 import { cacheBytes, clearCache, filesOf, pruneSaveDir, UndoPending, writeTogether, type BesideFile, isScreenshot, listFiles, listProfiles, PROFILES_DIR, readBytes, readText, writeFile, type Profile } from './savefs';
 import { AUTOSAVE_SEEN, coverOf, fixedName, isProfileFile, isProfileName, modCars, NAME_MAX, profileInside, renameProfile, sealed, withName, type RenameFiles } from './profile';
+import { completeSave } from './complete-save';
+import { archiveSave, listArchives, restoreArchive, deleteArchive, type SaveArchive } from './save-archives';
 import { listZip, unzip, zip, ZipError, type ZipEntry } from './zip';
 import { downloadBlob, stamp } from './logs';
 import { fmtBytes } from './checks';
@@ -468,12 +470,90 @@ export class SavesPanel {
     root.querySelector<HTMLButtonElement>('#export')!.onclick = () => void this.doExport();
     const inp = root.querySelector<HTMLInputElement>('#import')!;
     inp.onchange = () => { const f = inp.files?.[0]; inp.value = ''; if (f) void this.doImport(f); };
+    root.querySelector<HTMLFormElement>('#complete-save-form')!.onsubmit = e => {
+      e.preventDefault(); void this.doCompleteSave();
+    };
     dataPanel.querySelector<HTMLButtonElement>('#clear-cache')!.onclick = () => void this.doClearCache();
     dataPanel.querySelector<HTMLButtonElement>('#fetch-all')!.onclick = () => void this.doDownload();
     this.shots = new ScreenshotsPart(root, { saveDir: deps.saveDir, confirm: deps.confirm, changed: () => void this.refresh() });
   }
 
   private shots: ScreenshotsPart;
+  private archiveWorking = false;
+
+  private async archiveAction(action: 'archive' | 'restore' | 'delete', name: string, archive?: SaveArchive) {
+    if (this.archiveWorking || this.deps.busy()) return;
+    this.archiveWorking = true;
+    try {
+      if (action === 'delete' && !await this.deps.confirm(t('Delete archived save?'),
+        t('Permanently delete the archived save {name}?', { name }), t('Delete'), true)) return;
+      await this.write(oneWriter(async () => {
+        if (this.deps.busy()) throw Error(t(QUIT_TO_RENAME));
+        if (action === 'archive') await archiveSave(this.deps.saveDir, name);
+        else if (action === 'restore') await restoreArchive(this.deps.saveDir, archive!);
+        else await deleteArchive(this.deps.saveDir, archive!);
+      }));
+      if (action !== 'delete') this.deps.onChanged?.();
+      this.msg(() => t(action === 'archive' ? 'Archived {name}. It will not appear in the game.' :
+        action === 'restore' ? 'Restored {name} to active profiles.' : 'Deleted archived save {name}.', { name }));
+    } catch (error) { this.msg(error instanceof Error ? error.message : String(error)); }
+    finally { this.archiveWorking = false; await this.refresh(); }
+  }
+
+  private showArchives(archives: SaveArchive[]) {
+    const ul = this.root.querySelector('#save-archives')!;
+    ul.replaceChildren();
+    if (!archives.length) {
+      const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('No archived saves.'); ul.append(li);
+    }
+    for (const archive of archives) {
+      const li = document.createElement('li');
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = archive.name;
+      const meta = document.createElement('span'); meta.className = 'meta';
+      meta.textContent = new Date(archive.mtime).toLocaleString(dateLocale());
+      li.append(name, meta);
+      for (const action of ['restore', 'delete'] as const) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'text-btn archive-btn';
+        button.textContent = t(action === 'restore' ? 'Restore' : 'Delete');
+        button.setAttribute('aria-label', t(action === 'restore' ? 'Restore archived {name}' : 'Delete archived {name}', { name: archive.name }));
+        button.disabled = this.deps.busy() || this.archiveWorking;
+        button.onclick = () => void this.archiveAction(action, archive.name, archive);
+        li.append(button);
+      }
+      ul.append(li);
+    }
+  }
+  private creatingComplete = false;
+
+  private async doCompleteSave() {
+    if (this.creatingComplete) return;
+    if (this.deps.busy()) { this.msg(() => t(QUIT_TO_RENAME), QUIT_TO_RENAME); return; }
+    const input = this.root.querySelector<HTMLInputElement>('#complete-save-name')!;
+    const button = this.root.querySelector<HTMLButtonElement>('#complete-save-create')!;
+    const name = input.value.trim();
+    this.creatingComplete = true; button.disabled = true;
+    try {
+      const bytes = completeSave(name);
+      await this.write(oneWriter(async () => {
+        if (this.deps.busy()) throw Error(t(QUIT_TO_RENAME));
+        const fs = filesOf(this.deps.saveDir);
+        const exists = (await fs.listFiles()).some(f => {
+          const p = f.path.split('/');
+          return p[0] === PROFILES_DIR && p[1]?.toLowerCase() === name.toLowerCase();
+        });
+        if (exists || !await fs.writeIfAbsent(`${PROFILES_DIR}/${name}/${name}`, bytes))
+          throw Error(t('There is a profile {name} already.', { name }));
+      }));
+      this.deps.onChanged?.();
+      await this.refresh();
+      this.msg(() => t('Created the 100% save for {name}.', { name }));
+      input.value = '';
+    } catch (error) {
+      this.msg(error instanceof Error ? error.message : String(error));
+    } finally {
+      this.creatingComplete = false; button.disabled = this.deps.busy();
+    }
+  }
 
   /** the section's messages, drawn again when the page's language changes (a Msg); said: which English text each says
    *  (the "quit the game first" ones, which go once the game ended) */
@@ -504,13 +584,16 @@ export class SavesPanel {
   async refresh() {
     const files = await listFiles(this.deps.saveDir);
     this.profiles = await listProfiles(this.deps.saveDir, files);
+    this.showArchives(await listArchives(this.deps.saveDir));
     this.shots.show(files.filter(f => isScreenshot(f.path)));
     const busy = this.deps.busy();
     // a name being typed stays as it is (the list is shown again when the edit ends)
     if (!this.profiles.some(p => p.name === this.renaming)) { this.renaming = null; this.showProfiles(); }
-    for (const b of this.root.querySelectorAll<HTMLButtonElement>('.profiles .rename-btn, .profiles .renaming [type="submit"]')) b.disabled = busy;
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('.profiles .rename-btn, .profiles .archive-btn, .profiles .renaming [type="submit"]')) b.disabled = busy || this.archiveWorking;
     this.root.querySelector<HTMLLabelElement>('.file-btn')!.toggleAttribute('aria-disabled', busy);
     this.root.querySelector<HTMLInputElement>('#import')!.disabled = busy;
+    this.root.querySelector<HTMLButtonElement>('#complete-save-create')!.disabled = busy || this.creatingComplete;
+    this.root.querySelector<HTMLInputElement>('#complete-save-name')!.disabled = busy;
     this.dataPanel.querySelector<HTMLButtonElement>('#clear-cache')!.disabled = busy;
     if (busy) { this.msg(() => t(QUIT_TO_RENAME), QUIT_TO_RENAME); this.dataMsg(() => t(QUIT_TO_CHANGE), false, QUIT_TO_CHANGE); }
     else {
@@ -597,7 +680,11 @@ export class SavesPanel {
       b.setAttribute('aria-label', t('Rename {name}', { name: p.name })); b.disabled = busy;
       b.onclick = () => { this.renaming = p.name; this.showProfiles(); };
       if (p.name === this.focusName) focus = b;
-      li.append(n, m, b); ul.append(li);
+      const archive = document.createElement('button'); archive.type = 'button'; archive.className = 'text-btn archive-btn';
+      archive.textContent = t('Archive'); archive.setAttribute('aria-label', t('Archive {name}', { name: p.name }));
+      archive.disabled = busy || this.archiveWorking;
+      archive.onclick = () => void this.archiveAction('archive', p.name);
+      li.append(n, m, b, archive); ul.append(li);
     }
     this.focusName = null;
     if (focus) { focus.focus(); if (focus instanceof HTMLInputElement) focus.select(); }

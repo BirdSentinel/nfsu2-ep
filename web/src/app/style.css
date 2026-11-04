@@ -288,7 +288,7 @@ kbd .glyph { display: inline-block; width: 14px; height: 14px; vertical-align: -
 }
 .switch:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.set input[type="number"], .set input[type="text"], .profiles input[type="text"], .dlg input[type="text"] {
+.set input[type="number"], .set input[type="text"], .profiles input[type="text"], .dlg input[type="text"], #complete-save-name {
   width: 128px; height: 40px; padding: 0 12px; border: 2px solid var(--edge); border-radius: 8px;
   background: var(--field); color: var(--lime); font: italic 700 16px/24px var(--font);
 }

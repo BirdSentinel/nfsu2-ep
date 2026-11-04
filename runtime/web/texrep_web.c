@@ -331,6 +331,46 @@ static int city_uploaded(unsigned mid, unsigned level, const uint8_t *data, size
     fprintf(stderr, "[city-sign] Budapest 768x192 installed t%u\n", mid);
     return 1;
 }
+static uint8_t g_plate_candidate[TEXREP_MAXTEX];
+static uint8_t g_registered_candidate[TEXREP_MAXTEX];
+/* SGN_REGISTEREDTRADEMARK is a separate decal over the restaurant signs,
+ * not part of their editable logo atlas. Hide only this exact texture. */
+static int registered_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_registered_candidate[mid] || level || n != 32768) return 0;
+    crc_init();
+    if (crc32(data, n) != 1576740834u || adler32(data, n) != 3984434119u) return 0;
+    static const uint8_t transparent[4] = {0, 0, 0, 0};
+    metal_replace_texture(mid, 1, 1, 1, 21u, transparent);
+    fprintf(stderr, "[texture] SGN_REGISTEREDTRADEMARK hidden t%u\n", mid);
+    return 1;
+}
+static uint8_t *g_plate_pixels;
+static int g_plate_read;
+static int plate_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_plate_candidate[mid] || level || n != 4096) return 0;
+    crc_init();
+    uint32_t crc = crc32(data, n), adler = adler32(data, n);
+    if (crc != 4010907258u || adler != 3236276826u) return 0;
+    const size_t size = 512u * 256u * 4u;
+    if (!g_plate_read){
+        g_plate_read = 1;
+        char path[1024];
+        if (fileio_resolve_game("GLOBAL\\custom-license-plate.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_plate_pixels = malloc(size);
+                if (g_plate_pixels && fread(g_plate_pixels, 1, size, fp) != size){
+                    free(g_plate_pixels); g_plate_pixels = NULL;
+                }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_plate_pixels) return 0;
+    metal_replace_texture(mid, 512, 256, 1, 21u, g_plate_pixels);
+    fprintf(stderr, "[license-plate] GYTTPRKLS 512x256 installed t%u\n", mid);
+    return 1;
+}
 static int billboard_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
     if (!mid || mid >= TEXREP_MAXTEX || !g_billboard_candidate[mid] || level) return 0;
     unsigned shape = g_billboard_candidate[mid] - 1u;
@@ -529,6 +569,8 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     cp_gone(mid);
     if (mid && mid < TEXREP_MAXTEX){
         g_billboard_candidate[mid] = 0;
+        g_plate_candidate[mid] = w == 128 && h == 64 && d3dfmt == 0x31545844u;
+        g_registered_candidate[mid] = w == 256 && h == 256 && d3dfmt == 0x31545844u;
         g_city_candidate[mid] = w == 256 && h == 64 && d3dfmt == 0x31545844u;
         for (unsigned i = 0; i < sizeof billboard_keys / sizeof billboard_keys[0]; i++)
             if (w == billboard_keys[i].w && h == billboard_keys[i].h && d3dfmt == billboard_keys[i].fmt){
@@ -554,6 +596,8 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     g_t[mid].st = w <= 0xFFFF && h <= 0xFFFF && may_be(w, h, d3dfmt);
 }
 void texrep_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (plate_uploaded(mid, level, data, (size_t)pitch * rows)) return;
+    if (registered_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (city_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (billboard_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     world_blue_uploaded(mid, level, data, (size_t)pitch * rows);
