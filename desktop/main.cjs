@@ -93,9 +93,19 @@ async function createClient(id, initiallyStudio) {
     const { createLibraryReader } = require('./studio-library.cjs');
     const read = createLibraryReader(path.join(root, 'VinylStudio', 'decals'));
     studioWindow = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'studio-preload.cjs'), partition, additionalArguments: [instanceArgument], contextIsolation: true, sandbox: true, nodeIntegration: false } });
+    studioWindow.setBackgroundColor('#0b0d10');
     win.contentView.addChildView(studioWindow);
     studioVisible = true;
     sizeStudio();
+    const projects = require('./studio-projects.cjs').createProjectStore(path.join(root, 'VinylStudio', 'vinyls'));
+    for (const operation of ['list', 'open', 'save']) {
+      const name = `studio:projects:${operation}`;
+      ipc.removeHandler(name);
+      ipc.handle(name, (event, value) => {
+        if (!studioWindow || event.sender !== studioWindow.webContents) throw Error('Invalid editor request');
+        return projects[operation](value);
+      });
+    }
     ipc.removeHandler('studio:library');
     ipc.handle('studio:library', async (event, revision) => {
       if (!studioWindow || event.sender !== studioWindow.webContents) throw Error('Invalid library request');

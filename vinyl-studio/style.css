@@ -57,3 +57,5 @@ img,a{-webkit-user-drag:none}
 @media(max-width:1150px){.library-panel,.layer-panel{padding-top:10px}}
 
 .export-result{margin-top:18px;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--panel);overflow-wrap:anywhere}.export-result[data-state=success]{border-color:var(--accent)}.export-result p{margin:0}.export-result #exportLocation{margin-top:12px}.export-result strong{color:var(--accent-text)}.export-result #exportLocation p{margin-top:6px;font-size:13px}
+
+.project-list{display:flex;flex-direction:column;gap:8px;max-height:50dvh;overflow-y:auto;margin:16px 0}.project-list button{text-align:left;display:flex;flex-direction:column;gap:5px;flex-shrink:0}.project-list small{color:var(--muted)}#projectName{user-select:text}#saveMessage,#projectsMessage{overflow-wrap:anywhere}

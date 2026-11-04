@@ -297,6 +297,37 @@ static void cp_gone(unsigned mid){
 
 /* ---- the guest thread's hooks (com.c) ----------------------------------------------------------- */
 #include "blue_ui.h"
+#include "billboards.h"
+/* Only original, checksum-identified adverts may read these PNG overrides.
+ * Repeated streamed copies of a billboard all resolve to the same file. */
+static uint16_t g_billboard_candidate[TEXREP_MAXTEX];
+static int billboard_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_billboard_candidate[mid] || level) return 0;
+    unsigned shape = g_billboard_candidate[mid] - 1u;
+    crc_init();
+    uint32_t crc = crc32(data, n), adler = adler32(data, n);
+    for (unsigned i = 0; i < sizeof billboard_keys / sizeof billboard_keys[0]; i++){
+        if (billboard_keys[i].w != billboard_keys[shape].w || billboard_keys[i].h != billboard_keys[shape].h ||
+            billboard_keys[i].fmt != billboard_keys[shape].fmt || billboard_keys[i].bytes != n ||
+            billboard_keys[i].crc != crc || billboard_keys[i].adler != adler) continue;
+        char win[256], path[1024];
+        snprintf(win, sizeof win, "GLOBAL\\custom-billboards\\%s.bgra", billboard_keys[i].file);
+        if (!fileio_resolve_game(win, path, sizeof path)) continue;
+        FILE *fp = fopen(path, "rb");
+        if (!fp) continue;
+        size_t bytes = (size_t)billboard_keys[i].w * billboard_keys[i].h * 4;
+        uint8_t *pixels = malloc(bytes);
+        int valid = pixels && fread(pixels, 1, bytes, fp) == bytes;
+        fclose(fp);
+        if (valid){
+            metal_replace_texture(mid, billboard_keys[i].w, billboard_keys[i].h, 1, 21u, pixels);
+            fprintf(stderr, "[billboard] custom/billboards/%s.png installed t%u\n", billboard_keys[i].file, mid);
+        }
+        free(pixels);
+        if (valid) return 1;
+    }
+    return 0;
+}
 static uint8_t g_blue_candidate[TEXREP_MAXTEX];
 /* Draw-time theme for the locked-road barrier and neon edges, information sign and ground rings.
  * The latter is white in the texture and coloured by the game's vertices. */
@@ -467,6 +498,11 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     (void)usage; (void)pool;
     cp_gone(mid);
     if (mid && mid < TEXREP_MAXTEX){
+        g_billboard_candidate[mid] = 0;
+        for (unsigned i = 0; i < sizeof billboard_keys / sizeof billboard_keys[0]; i++)
+            if (w == billboard_keys[i].w && h == billboard_keys[i].h && d3dfmt == billboard_keys[i].fmt){
+                g_billboard_candidate[mid] = (uint16_t)(i + 1); break;
+            }
         g_world_blue[mid] = (d3dfmt == 0x33545844u && ((w == 256 && h == 128) || (w == 128 && (h == 64 || h == 128)) || (w == 64 && (h == 32 || h == 64)))) ||
                             (d3dfmt == 0x31545844u && w == 256 && h == 64);
         g_blue_candidate[mid] = 0;
@@ -487,6 +523,7 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     g_t[mid].st = w <= 0xFFFF && h <= 0xFFFF && may_be(w, h, d3dfmt);
 }
 void texrep_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (billboard_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     world_blue_uploaded(mid, level, data, (size_t)pitch * rows);
     if (blue_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (intro_uploaded(mid, level, data, pitch, rows)) return;

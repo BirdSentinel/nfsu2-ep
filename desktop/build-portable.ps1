@@ -35,6 +35,9 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'package.json'), (Join-Path $PSS
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'studio-preload.cjs'), (Join-Path $PSScriptRoot 'studio-library.cjs') -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'launcher-preload.cjs'), (Join-Path $PSScriptRoot 'studio-export.cjs') -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'online.cjs') -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'billboards.cjs'), (Join-Path $PSScriptRoot 'billboards.json') -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'menu-background.cjs') -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'studio-projects.cjs') -Destination $appDir
 Copy-Item -LiteralPath $Frontend -Destination (Join-Path $output 'web') -Recurse
 Copy-Item -LiteralPath (Join-Path $Module 'nfsu2.wasm') -Destination (Join-Path $output 'web/game.wasm')
 Copy-Item -LiteralPath (Join-Path $Module 'nfsu2.json') -Destination (Join-Path $output 'web/game.json')
@@ -42,6 +45,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $output 'custom') | Out-Nul
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/ep-games.png') -Destination (Join-Path $output 'custom/ep-games.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular.png') -Destination (Join-Path $output 'custom/cingular.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular-text.png') -Destination (Join-Path $output 'custom/cingular-text.png')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/billboards') -Destination (Join-Path $output 'custom/billboards') -Recurse
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/menu-background.png'), (Join-Path $PSScriptRoot 'assets/menu-floor.png') -Destination (Join-Path $output 'custom')
 $game = Join-Path $output 'game'
 New-Item -ItemType Directory -Path $game | Out-Null
 $entries = 'speed2.exe server.dll server.cfg cars credits frontend global langpacks languages memcard movies nis pfdata sdata sound speech subtitles texpacks tracks' -split ' '
@@ -58,6 +63,10 @@ Copy-Item -LiteralPath (Join-Path $repo 'docs/web/PNG-VINYLS.md') -Destination (
 $studio = Join-Path $repo 'out/vinyl-studio'
 if (Test-Path -LiteralPath (Join-Path $studio 'models.js')) {
     Copy-Item -LiteralPath $studio -Destination (Join-Path $output 'VinylStudio') -Recurse
+    foreach ($file in @('index.html', 'app.js', 'loading.js', 'projects.js', 'style.css', 'viewer.js', 'core.js', 'decals.js')) {
+        Copy-Item -LiteralPath (Join-Path $repo "vinyl-studio/$file") -Destination (Join-Path $output 'VinylStudio') -Force
+    }
+    New-Item -ItemType Directory -Path (Join-Path $output 'VinylStudio/vinyls') -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $output 'Open-Vinyl-Studio.cmd'), "@echo off`r`ncall `"%~dp0VinylStudio\Open-Vinyl-Studio.cmd`"`r`n", [Text.Encoding]::ASCII)
 }
 Write-Host "Ready: $output\Egyuttparkolas.exe"

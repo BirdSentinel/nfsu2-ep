@@ -5,6 +5,8 @@ const path = require('node:path');
 const { pipeline } = require('node:stream');
 const { Readable } = require('node:stream');
 const { prepareVinyls } = require('./vinyls.cjs');
+const { prepareBillboards } = require('./billboards.cjs');
+const { prepareMenuBackground } = require('./menu-background.cjs');
 const ENTRIES = new Set('speed2.exe server.dll server.cfg cars credits frontend global langpacks languages memcard movies nis pfdata sdata sound speech subtitles texpacks tracks'.split(' '));
 const BLOCK = 1 << 20;
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
@@ -29,6 +31,8 @@ function inventory(root, game = false) {
 
 async function startServer(root, port = 18742, decodePNG, online) {
   function prepareIntro(data) {
+    prepareMenuBackground(root, data, decodePNG);
+    prepareBillboards(root, data, decodePNG);
     for (const [name, width, height] of [['intro', 1024, 1024], ['logo', 1024, 256], ['ep-games', 512, 512], ['cingular', 512, 512], ['cingular-text', 512, 256]]) {
       const file = path.join(root, 'custom', `${name}.png`);
       if (!decodePNG || !fs.existsSync(file)) continue;
