@@ -45,6 +45,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $output 'custom') | Out-Nul
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/ep-games.png') -Destination (Join-Path $output 'custom/ep-games.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular.png') -Destination (Join-Path $output 'custom/cingular.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular-text.png') -Destination (Join-Path $output 'custom/cingular-text.png')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/budapest.png') -Destination (Join-Path $output 'custom/budapest.png')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/billboards') -Destination (Join-Path $output 'custom/billboards') -Recurse
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/menu-background.png'), (Join-Path $PSScriptRoot 'assets/menu-floor.png') -Destination (Join-Path $output 'custom')
 $game = Join-Path $output 'game'
@@ -56,6 +57,8 @@ foreach ($item in Get-ChildItem -LiteralPath $Data) {
         Copy-Item -LiteralPath $item.FullName -Destination $game -Recurse
     }
 }
+& $Python (Join-Path $repo 'tools/replace_city_sign.py') $game (Join-Path $PSScriptRoot 'assets/budapest.png')
+if ($LASTEXITCODE -ne 0) { throw 'Budapest sign texture replacement failed.' }
 Copy-Item -LiteralPath (Join-Path $repo 'licenses') -Destination (Join-Path $output 'licenses') -Recurse
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $output 'licenses/project-MIT.txt')
 Copy-Item -LiteralPath (Join-Path $repo 'docs/web/PORTABLE.md') -Destination (Join-Path $output 'READ-ME.md')

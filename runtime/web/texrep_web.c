@@ -301,6 +301,36 @@ static void cp_gone(unsigned mid){
 /* Only original, checksum-identified adverts may read these PNG overrides.
  * Repeated streamed copies of a billboard all resolve to the same file. */
 static uint16_t g_billboard_candidate[TEXREP_MAXTEX];
+/* The city sign keeps its guest dimensions; only its GPU image is enlarged. */
+static uint8_t g_city_candidate[TEXREP_MAXTEX];
+static uint8_t *g_city_pixels;
+static int g_city_read;
+static int city_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_city_candidate[mid] || level || n != 8192) return 0;
+    crc_init();
+    uint32_t crc = crc32(data, n), adler = adler32(data, n);
+    if (!((crc == 0xb49e511du && adler == 0xd10fd886u) ||
+          (crc == 0x2f8f4c05u && adler == 0xb9c1c77du))) return 0;
+    const size_t size = 768u * 192u * 4u;
+    if (!g_city_read){
+        g_city_read = 1;
+        char path[1024];
+        if (fileio_resolve_game("GLOBAL\\custom-budapest.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_city_pixels = malloc(size);
+                if (g_city_pixels && fread(g_city_pixels, 1, size, fp) != size){
+                    free(g_city_pixels); g_city_pixels = NULL;
+                }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_city_pixels) return 0;
+    metal_replace_texture(mid, 768, 192, 1, 21u, g_city_pixels);
+    fprintf(stderr, "[city-sign] Budapest 768x192 installed t%u\n", mid);
+    return 1;
+}
 static int billboard_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
     if (!mid || mid >= TEXREP_MAXTEX || !g_billboard_candidate[mid] || level) return 0;
     unsigned shape = g_billboard_candidate[mid] - 1u;
@@ -499,6 +529,7 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     cp_gone(mid);
     if (mid && mid < TEXREP_MAXTEX){
         g_billboard_candidate[mid] = 0;
+        g_city_candidate[mid] = w == 256 && h == 64 && d3dfmt == 0x31545844u;
         for (unsigned i = 0; i < sizeof billboard_keys / sizeof billboard_keys[0]; i++)
             if (w == billboard_keys[i].w && h == billboard_keys[i].h && d3dfmt == billboard_keys[i].fmt){
                 g_billboard_candidate[mid] = (uint16_t)(i + 1); break;
@@ -523,6 +554,7 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     g_t[mid].st = w <= 0xFFFF && h <= 0xFFFF && may_be(w, h, d3dfmt);
 }
 void texrep_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (city_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (billboard_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     world_blue_uploaded(mid, level, data, (size_t)pitch * rows);
     if (blue_uploaded(mid, level, data, (size_t)pitch * rows)) return;

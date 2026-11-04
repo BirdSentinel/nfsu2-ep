@@ -33,7 +33,7 @@ async function startServer(root, port = 18742, decodePNG, online) {
   function prepareIntro(data) {
     prepareMenuBackground(root, data, decodePNG);
     prepareBillboards(root, data, decodePNG);
-    for (const [name, width, height] of [['intro', 1024, 1024], ['logo', 1024, 256], ['ep-games', 512, 512], ['cingular', 512, 512], ['cingular-text', 512, 256]]) {
+    for (const [name, width, height] of [['intro', 1024, 1024], ['logo', 1024, 256], ['ep-games', 512, 512], ['cingular', 512, 512], ['cingular-text', 512, 256], ['budapest', 768, 192]]) {
       const file = path.join(root, 'custom', `${name}.png`);
       if (!decodePNG || !fs.existsSync(file)) continue;
       try {
