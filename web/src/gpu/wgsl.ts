@@ -58,6 +58,7 @@ override ALPHA_FUNC: u32 = 7u;
 @fragment fn fs_ff(i: VOut) -> @location(0) vec4f {
   var c = i.col0 * textureSample(t0, s0, ${cube ? 'i.uv0.xyz' : 'i.uv0.xy'});
   if (ALPHA_FUNC == 7u && c.a < P.aref) { discard; }
+  if (P.pad0 > 0.5 && c.r > c.g * 1.2 && c.r > c.b * 1.2) { c = vec4f(vec3f(24.0, 148.0, 202.0) * (c.r / 255.0), c.a); }
   return vec4f(mix(P.fog.rgb, c.rgb, mix(1.0, saturate(i.fog), P.fog.a)), c.a);
 }`;
 

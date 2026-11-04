@@ -38,6 +38,10 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'online.cjs') -Destination $appD
 Copy-Item -LiteralPath $Frontend -Destination (Join-Path $output 'web') -Recurse
 Copy-Item -LiteralPath (Join-Path $Module 'nfsu2.wasm') -Destination (Join-Path $output 'web/game.wasm')
 Copy-Item -LiteralPath (Join-Path $Module 'nfsu2.json') -Destination (Join-Path $output 'web/game.json')
+New-Item -ItemType Directory -Force -Path (Join-Path $output 'custom') | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/ep-games.png') -Destination (Join-Path $output 'custom/ep-games.png')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular.png') -Destination (Join-Path $output 'custom/cingular.png')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/cingular-text.png') -Destination (Join-Path $output 'custom/cingular-text.png')
 $game = Join-Path $output 'game'
 New-Item -ItemType Directory -Path $game | Out-Null
 $entries = 'speed2.exe server.dll server.cfg cars credits frontend global langpacks languages memcard movies nis pfdata sdata sound speech subtitles texpacks tracks' -split ' '

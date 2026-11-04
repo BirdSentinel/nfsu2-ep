@@ -633,6 +633,7 @@ static unsigned psc_put(Buf *B){
     return B->psc_last;
 }
 #define PSCUBE 256
+int texrep_world_blue(unsigned mid);
 static int ps_of(unsigned tex){
     return (g_cur_ps > 0 && g_cur_ps < PSCUBE && metal_tex_is_cube(tex)) ? g_cur_ps + PSCUBE : g_cur_ps;
 }
@@ -648,6 +649,8 @@ static GwDraw *rec_draw(Buf *B, unsigned tex){
     D->blend = g_cur_blend; D->aref = g_cur_aref; D->depth = g_cur_depth;
     D->tex1 = g_cur_tex1; D->tex2 = g_cur_tex2; D->tex3 = g_cur_tex3;
     D->ps = ps_of(tex); D->psci = psc_put(B);
+    /* High bit is a draw-local colour theme; low bits retain the PS block. */
+    if (texrep_world_blue(tex)) D->psci |= 0x80000000u;
     memcpy(D->proj, g_cur_proj, sizeof D->proj);
     memcpy(D->smp, g_cur_smp, sizeof D->smp);
     D->bcol = g_cur_bcol; D->cull = g_cur_cull;

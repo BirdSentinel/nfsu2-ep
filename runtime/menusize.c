@@ -66,6 +66,7 @@
 #define KEPT_MAX  512
 
 __attribute__((weak)) float input_menu_scale(int bar){ (void)bar; return 1.f; }
+__attribute__((weak)) int custom_cingular_active(void){ return 0; }
 void sub_0055dfa0(CPU *c);
 void dispatch_patch(uint32_t a, void (*f)(CPU *));
 
@@ -200,12 +201,65 @@ static void apply(uint32_t pkg, int bar){
 }
 
 /* the package loop is about to queue a top-level object: ebx = it, edi = its package */
+/* Recolour FEng's lime accent, before vertex generation. This only visits
+ * UI objects, never world materials, car paint or texture pixels. Keep alpha
+ * and brightness so fades and dimmed menu states continue to work. */
+/* The driving music popup owns a UTF-16 label in InGameCommon, separate
+ * from the front-end's round badge. Replace only its two-letter brand;
+ * retain the game's trademark glyph, font, layout and animation. */
+static void music_brand(uint32_t o){
+    uint32_t s = MR32(o + 0x64u);
+    static const char prefix[] = "EA GAMES", suffix[] = " TRAX";
+    if (!ok(s, 30u)) return;
+    for (unsigned i = 0; i < 8; i++) if (MR16(s + i * 2) != (unsigned char)prefix[i]) return;
+    for (unsigned i = 0; i < 6; i++) if (MR16(s + (9 + i) * 2) != (unsigned char)suffix[i]) return;
+    MR16(s + 2) = 'P';
+    /* Use this owned string rather than resolving EA_TRAX_Header again. */
+    MR32(o + O_FLAGS) |= 2u | F_DIRTY;
+    fprintf(stderr, "[branding] music notification: EP GAMES TRAX\n");
+}
+static void blue_accent(uint32_t o, unsigned depth){
+    if (depth > 16) return;
+    for (unsigned n = 0; o && n < 2048 && ok(o, 0x70u); n++, o = MR32(o + O_NEXT)){
+        uint32_t type = MR32(o + O_TYPE), d = MR32(o + O_DATA);
+        if (type == T_STRING) music_brand(o);
+        if ((type == T_IMAGE || type == T_STRING) && ok(d, 16)){
+            /* The HUD phone, mail and selected D-pad triangle are white
+             * textures tinted by FEng. Use the
+             * launcher's #1894CA, keeping its existing fade/visibility. */
+            uint32_t tex = type == T_IMAGE ? MR32(o + 0x24u) : 0;
+            if (tex == 0x6fff0767u || tex == 0x4b9b8f5au || tex == 0xc3f846b5u){
+                if (MR32(d) != 202 || MR32(d + 4) != 148 || MR32(d + 8) != 24){
+                    MR32(d) = 202; MR32(d + 4) = 148; MR32(d + 8) = 24;
+                    MR32(o + O_FLAGS) |= F_DIRTY;
+                }
+            }
+            /* Show the replacement's own colours; retain the HUD's alpha. */
+            if (type == T_IMAGE && MR32(o + 0x24u) == 0xea570722u && custom_cingular_active()){
+                if (MR32(d) != 255 || MR32(d + 4) != 255 || MR32(d + 8) != 255){
+                    MR32(d) = MR32(d + 4) = MR32(d + 8) = 255;
+                    MR32(o + O_FLAGS) |= F_DIRTY;
+                }
+            }
+            int b = (int)MR32(d), g = (int)MR32(d + 4), r = (int)MR32(d + 8);
+            /* Yellow-green menu accents, including the pale selected glow. */
+            if (g > 40 && g <= 255 && r >= g * 55 / 100 && r <= g && b >= 0 && b < g * 80 / 100 && g - b > 25){
+                MR32(d) = (uint32_t)(g * 202 / 255);
+                MR32(d + 4) = (uint32_t)(g * 148 / 255);
+                MR32(d + 8) = (uint32_t)(g * 24 / 255);
+                MR32(o + O_FLAGS) |= F_DIRTY;
+            }
+        }
+        if (type == T_GROUP) blue_accent(MR32(o + O_KIDS), depth + 1);
+    }
+}
 void menusize_obj(CPU *c){
     if (!g_installed) return;
     uint32_t pkg = c->edi;
     if (!ok(pkg, 0x50u) || c->ebx != MR32(pkg + P_OBJS)) return;   /* once a package: at its first object */
     const char *nm = pkg_name(pkg);
     if (!nm) return;
+    blue_accent(MR32(pkg + P_OBJS), 0);
     dump(pkg, nm);
     int bar = !strcasecmp(nm, BAR_FNG);
     if (bar) g_bar = pkg;

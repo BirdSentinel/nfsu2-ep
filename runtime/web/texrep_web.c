@@ -296,10 +296,143 @@ static void cp_gone(unsigned mid){
 }
 
 /* ---- the guest thread's hooks (com.c) ----------------------------------------------------------- */
+#include "blue_ui.h"
+static uint8_t g_blue_candidate[TEXREP_MAXTEX];
+/* Draw-time theme for the locked-road barrier and neon edges, information sign and ground rings.
+ * The latter is white in the texture and coloured by the game's vertices. */
+static uint8_t g_world_blue[TEXREP_MAXTEX];
+int texrep_world_blue(unsigned mid){ return mid < TEXREP_MAXTEX && g_world_blue[mid] == 2; }
+static void world_blue_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_world_blue[mid] || level) return;
+    crc_init();
+    uint32_t crc = crc32(data, n), adler = adler32(data, n);
+    g_world_blue[mid] = ((n == 32768 && crc == 0xe836acf4u && adler == 0xb6daa78bu) ||
+                         (n == 8192 && crc == 0xb9b8561bu && adler == 0xfd1380c6u) ||
+                         /* XE_RINGWAVEA: only red pixels are themed; other marker colours stay intact. */
+                         (n == 16384 && crc == 0xdc8563b7u && adler == 0x70fff57du) ||
+                         /* OBJ_TRACKBARRIERB_NEON: keep its white core, recolour the red halo. */
+                         (n == 16384 && crc == 0x67e16458u && adler == 0xfca14830u) ||
+                         /* SFX_NEONBARB frames both locked-road and race arrow barriers. */
+                         (n == 2048 && crc == 0xc05824bdu && adler == 0x5010b1beu)) ? 2 : 1;
+}
+static int blue_uploaded(unsigned mid, unsigned level, const uint8_t *data, size_t n){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_blue_candidate[mid] || level) return 0;
+    crc_init();
+    for (unsigned i = 0; i < sizeof blue_ui / sizeof blue_ui[0]; i++){
+        if (!(g_blue_candidate[mid] & (1u << i)) || n != blue_ui[i].bytes) continue;
+        if (crc32(data, n) != blue_ui[i].crc || adler32(data, n) != blue_ui[i].adler) continue;
+        metal_replace_texture(mid, blue_ui[i].w, blue_ui[i].h, 1, 21u, blue_ui[i].pixels);
+        return 1;
+    }
+    return 0;
+}
 /* GLOBAL/GlobalB.lzc, texture C51CE6F1: the title background only.
  * Match both content checksums so other 1024-square UI textures stay intact.
  * The desktop host decodes custom/intro.png anew on each application launch. */
 static uint8_t g_intro_candidate[TEXREP_MAXTEX];
+static uint8_t g_logo_candidate[TEXREP_MAXTEX];
+static uint8_t g_badge_candidate[TEXREP_MAXTEX];
+static uint8_t g_cingular_candidate[TEXREP_MAXTEX];
+static uint8_t g_cingular_text_candidate[TEXREP_MAXTEX];
+static uint8_t *g_cingular_text_pixels;
+static int g_cingular_text_read;
+/* HUD_CINGULAR_LOGO (67A76A24) is the wordmark, separate from the figure. */
+static int cingular_text_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_cingular_text_candidate[mid] || level || pitch != 512 || rows != 16) return 0;
+    crc_init();
+    if (crc32(data, 8192) != 0xd2eddf6eu || adler32(data, 8192) != 0x55d70ae3u) return 0;
+    if (!g_cingular_text_read){
+        g_cingular_text_read = 1;
+        char path[1024];
+        if (fileio_resolve_game("GLOBAL\\custom-cingular-text.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_cingular_text_pixels = malloc(524288);
+                if (g_cingular_text_pixels && fread(g_cingular_text_pixels, 1, 524288, fp) != 524288){ free(g_cingular_text_pixels); g_cingular_text_pixels = NULL; }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_cingular_text_pixels) return 0;
+    metal_replace_texture(mid, 512, 256, 1, 21u, g_cingular_text_pixels);
+    fprintf(stderr, "[cingular-text] custom/cingular-text.png replaced wordmark t%u\n", mid);
+    return 1;
+}
+static uint8_t *g_cingular_pixels;
+static int g_cingular_read;
+int custom_cingular_active(void){ return g_cingular_pixels != NULL; }
+/* The white figure in InGameFreeRoam/InGameRace, tinted orange by FEng. */
+static int cingular_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_cingular_candidate[mid] || level || pitch != 128 || rows != 8) return 0;
+    crc_init();
+    if (crc32(data, 1024) != 0xd43c79e0u || adler32(data, 1024) != 0x2d1d4530u) return 0;
+    if (!g_cingular_read){
+        g_cingular_read = 1;
+        char path[1024];
+        if (fileio_resolve_game("GLOBAL\\custom-cingular.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_cingular_pixels = malloc(1048576);
+                if (g_cingular_pixels && fread(g_cingular_pixels, 1, 1048576, fp) != 1048576){ free(g_cingular_pixels); g_cingular_pixels = NULL; }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_cingular_pixels) return 0;
+    metal_replace_texture(mid, 512, 512, 1, 21u, g_cingular_pixels);
+    fprintf(stderr, "[cingular] custom/cingular.png replaced HUD icon t%u\n", mid);
+    return 1;
+}
+static uint8_t *g_badge_pixels;
+static int g_badge_read;
+static int badge_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_badge_candidate[mid] || level || pitch != 512 || rows != 32) return 0;
+    crc_init();
+    if (crc32(data, 16384) != 0xde12dbceu || adler32(data, 16384) != 0x3b4c6150u) return 0;
+    if (!g_badge_read){
+        g_badge_read = 1;
+        char path[1024];
+        if (fileio_resolve_game("GLOBAL\\custom-ep-games.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_badge_pixels = malloc(1048576);
+                if (g_badge_pixels && fread(g_badge_pixels, 1, 1048576, fp) != 1048576){ free(g_badge_pixels); g_badge_pixels = NULL; }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_badge_pixels) return 0;
+    metal_replace_texture(mid, 512, 512, 1, 21u, g_badge_pixels);
+    fprintf(stderr, "[badge] EP Games music badge installed t%u\n", mid);
+    return 1;
+}
+static uint8_t *g_logo_pixels[2];
+static int g_logo_read[2];
+static int logo_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    if (!mid || mid >= TEXREP_MAXTEX || !g_logo_candidate[mid] || level || pitch != 1024 || rows != 16) return 0;
+    crc_init();
+    uint32_t crc = crc32(data, 16384), adler = adler32(data, 16384);
+    int shadow;
+    if (crc == 0x1de5eb78u && adler == 0xd20fab8fu) shadow = 0;
+    else if (crc == 0xe523b775u && adler == 0x70710453u) shadow = 1;
+    else return 0;
+    if (!g_logo_read[shadow]){
+        g_logo_read[shadow] = 1;
+        char path[1024];
+        if (fileio_resolve_game(shadow ? "GLOBAL\\custom-logo-shadow.bgra" : "GLOBAL\\custom-logo.bgra", path, sizeof path)){
+            FILE *fp = fopen(path, "rb");
+            if (fp){
+                g_logo_pixels[shadow] = malloc(1048576);
+                if (g_logo_pixels[shadow] && fread(g_logo_pixels[shadow], 1, 1048576, fp) != 1048576){ free(g_logo_pixels[shadow]); g_logo_pixels[shadow] = NULL; }
+                fclose(fp);
+            }
+        }
+    }
+    if (!g_logo_pixels[shadow]) return 0;
+    metal_replace_texture(mid, 1024, 256, 1, 21u, g_logo_pixels[shadow]);
+    fprintf(stderr, "[logo] custom/logo.png replaced menu logo%s t%u\n", shadow ? " shadow" : "", mid);
+    return 1;
+}
 static uint8_t *g_intro_pixels;
 static int g_intro_read;
 static int intro_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
@@ -327,7 +460,15 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     (void)usage; (void)pool;
     cp_gone(mid);
     if (mid && mid < TEXREP_MAXTEX){
+        g_world_blue[mid] = d3dfmt == 0x33545844u && ((w == 256 && h == 128) || (w == 128 && (h == 64 || h == 128)) || (w == 64 && h == 32));
+        g_blue_candidate[mid] = 0;
+        for (unsigned i = 0; i < sizeof blue_ui / sizeof blue_ui[0]; i++)
+            if (w == blue_ui[i].w && h == blue_ui[i].h && d3dfmt == blue_ui[i].fmt) g_blue_candidate[mid] |= 1u << i;
         g_intro_candidate[mid] = w == 1024 && h == 1024 && d3dfmt == 21u;
+        g_logo_candidate[mid] = w == 256 && h == 64 && d3dfmt == 0x33545844u;
+        g_badge_candidate[mid] = w == 128 && h == 128 && d3dfmt == 0x33545844u;
+        g_cingular_candidate[mid] = w == 32 && h == 32 && d3dfmt == 0x33545844u;
+        g_cingular_text_candidate[mid] = w == 128 && h == 64 && d3dfmt == 0x33545844u;
         g_bi[mid] = w == PHOTO_ICON_KEY_W && h == PHOTO_ICON_KEY_H && d3dfmt == PHOTO_ICON_KEY_FMT;
         g_bi_levels[mid] = (uint8_t)(levels > 255 ? 255 : levels);
     }
@@ -338,7 +479,13 @@ void texrep_created(unsigned mid, unsigned w, unsigned h, unsigned levels, unsig
     g_t[mid].st = w <= 0xFFFF && h <= 0xFFFF && may_be(w, h, d3dfmt);
 }
 void texrep_uploaded(unsigned mid, unsigned level, const uint8_t *data, unsigned pitch, unsigned rows){
+    world_blue_uploaded(mid, level, data, (size_t)pitch * rows);
+    if (blue_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (intro_uploaded(mid, level, data, pitch, rows)) return;
+    if (logo_uploaded(mid, level, data, pitch, rows)) return;
+    if (badge_uploaded(mid, level, data, pitch, rows)) return;
+    if (cingular_uploaded(mid, level, data, pitch, rows)) return;
+    if (cingular_text_uploaded(mid, level, data, pitch, rows)) return;
     if (mid && mid < TEXREP_MAXTEX && g_bi[mid] && copied_uploaded(mid, level, data, (size_t)pitch * rows)) return;
     if (mid && mid < TEXREP_MAXTEX && g_bi[mid] && !level && builtin_uploaded(mid, data, (size_t)pitch * rows)) return;
     if (!g_on || !mid || mid >= TEXREP_MAXTEX || !g_t[mid].st || level) return;

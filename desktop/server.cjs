@@ -29,19 +29,24 @@ function inventory(root, game = false) {
 
 async function startServer(root, port = 18742, decodePNG, online) {
   function prepareIntro(data) {
-    const file = path.join(root, 'custom', 'intro.png');
-    if (!decodePNG || !fs.existsSync(file)) return;
-    try {
-      const rgba = decodePNG(fs.readFileSync(file), 1024, 1024);
-      if (rgba.length !== 1024 * 1024 * 4) throw Error('Unexpected intro pixel size');
-      const buffer = Buffer.alloc(rgba.length);
-      for (let i = 0; i < rgba.length; i += 4) {
-        buffer[i] = rgba[i + 2]; buffer[i + 1] = rgba[i + 1]; buffer[i + 2] = rgba[i]; buffer[i + 3] = 255;
-      }
-      const p = 'GLOBAL/custom-intro.bgra';
-      data.files.set(p.toLowerCase(), { buffer, size: buffer.length });
-      data.entries.push({ p, s: buffer.length, m: fs.statSync(file).mtimeMs / 1000 });
-    } catch (e) { console.warn(`Custom intro could not be loaded: ${e.message}`); }
+    for (const [name, width, height] of [['intro', 1024, 1024], ['logo', 1024, 256], ['ep-games', 512, 512], ['cingular', 512, 512], ['cingular-text', 512, 256]]) {
+      const file = path.join(root, 'custom', `${name}.png`);
+      if (!decodePNG || !fs.existsSync(file)) continue;
+      try {
+        const rgba = decodePNG(fs.readFileSync(file), width, height);
+        if (rgba.length !== width * height * 4) throw Error('Unexpected pixel size');
+        for (const shadow of name === 'logo' ? [false, true] : [false]) {
+          const buffer = Buffer.alloc(rgba.length);
+          for (let i = 0; i < rgba.length; i += 4) {
+            buffer[i] = shadow ? 0 : rgba[i + 2]; buffer[i + 1] = shadow ? 0 : rgba[i + 1]; buffer[i + 2] = shadow ? 0 : rgba[i];
+            buffer[i + 3] = name === 'intro' ? 255 : rgba[i + 3];
+          }
+          const p = `GLOBAL/custom-${name}${shadow ? '-shadow' : ''}.bgra`;
+          data.files.set(p.toLowerCase(), { buffer, size: buffer.length });
+          data.entries.push({ p, s: buffer.length, m: fs.statSync(file).mtimeMs / 1000 });
+        }
+      } catch (e) { console.warn(`Custom ${name} could not be loaded: ${e.message}`); }
+    }
   }
   let data = inventory(path.join(root, 'game'), true);
   prepareIntro(data);
@@ -114,3 +119,4 @@ async function startServer(root, port = 18742, decodePNG, online) {
   return server;
 }
 module.exports = { startServer, inventory, ENTRIES };
+
