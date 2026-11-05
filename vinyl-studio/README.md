@@ -89,3 +89,8 @@ straight into `game/CARS/<CAR>/VINYLS/<CAR>_CONTEST_01.png`. Existing PNGs are
 backed up in `UserData/VinylBackups` before replacement. Save `.epvinyl`
 separately to keep editable layers. Return to the launcher and restart the game
 to load changed vinyls. Browser-only mode still downloads PNG/ZIP files.
+
+The additional **Mazda MX-5 NA (1994)** appears immediately after **Mazda Miata NB**.
+It uses its own body geometry and UV layout. Its game export is
+`game/CARS/MX5NA/VINYLS/MX5NA_CONTEST_01.png`; select **Vinyls → Contest → AinGide**
+on the NA after restarting the game. Save an `.epvinyl` project to retain layers.

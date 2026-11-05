@@ -543,9 +543,11 @@ static void load_state(CPU *c, uint32_t db, const State *st){
  * file, or, the game going back to the payload it kept (0x5347C0), as they
  * were when it was made */
 void sub_00516850_orig(CPU *c);
+void addon_stock_append(uint32_t db);
 void sub_00516850(CPU *c){
     uint32_t db = c->ecx, in = MR32(c->esp + 4u), size = MR32(c->esp + 8u);
     sub_00516850_orig(c);
+    addon_stock_append(db);
     g_loads++;
     int p = player_of(db);
     if (p < 0 || !ensure(c)) return;

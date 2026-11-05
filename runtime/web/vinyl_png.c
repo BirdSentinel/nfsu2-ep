@@ -11,12 +11,16 @@ int fileio_resolve_game(const char *, char *, size_t);
 
 void vinyl_png_decoded(uint32_t out, uint32_t size){
     /* Retail 512-square P8 vinyls: seven mips, aligned palette, 156-byte trailer. */
-    if (size != 350748u) return;
+    /* Binarius-authored packs omit the retail palette's 64-byte padding. */
+    if (size != 350748u && size != 350684u) return;
     uint8_t *data = g_mem + out, *ti = data + size - 156u;
     uint32_t image_size, palette_size, image_at, palette_at;
     memcpy(&image_at, ti + 0x30, 4); memcpy(&palette_at, ti + 0x34, 4);
     memcpy(&image_size, ti + 0x38, 4); memcpy(&palette_size, ti + 0x3c, 4);
-    if (image_size != 349504u || palette_size != 1024u || palette_at - image_at != 349568u
+    uint32_t palette_offset = palette_at - image_at;
+    if (image_size != 349504u || palette_size != 1024u
+        || (palette_offset != 349568u && palette_offset != 349504u)
+        || palette_offset + palette_size + 156u != size
         || ti[0x44] != 0 || ti[0x45] != 2 || ti[0x46] != 0 || ti[0x47] != 2 || ti[0x4e] != 7) return;
     char name[25], car[25]; unsigned len = 0, split = 0;
     for (; len < 24 && ti[12 + len]; len++){
@@ -44,7 +48,7 @@ void vinyl_png_decoded(uint32_t out, uint32_t size){
     }
     if (ok){
         memcpy(data, replacement + 16, 349504);
-        memcpy(data + 349568, replacement + 16 + 349504, 1024);
+        memcpy(data + palette_offset, replacement + 16 + 349504, 1024);
         fprintf(stderr, "[vinyl-png] replaced %s\n", name);
     } else fprintf(stderr, "[vinyl-png] invalid override for %s: original retained\n", name);
     free(replacement);

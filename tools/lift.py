@@ -410,7 +410,12 @@ class Lifter:
         elif m.base and m.base!=0: raise Unsupported(f"base register {m.base}")
         if m.index:
             if m.index not in R32: raise Unsupported("index register")
-            parts.append(f"c->{R32[m.index]}*{m.scale}" if m.scale!=1 else f"c->{R32[m.index]}")
+            index = f"c->{R32[m.index]}"
+            # Extra MX5NA uses the Miata's performance-rating curves. Its own
+            # CarTypeInfo still supplies the actual physics and wheel positions.
+            if getattr(self, 'IB', 0) == 0x400000 and m.disp in (0x86b0c8, 0x86b0cc, 0x7fc120, 0x7fc1d8):
+                index = f"addon_donor_type({index})"
+            parts.append(f"{index}*{m.scale}" if m.scale!=1 else index)
         d = (m.disp + extra) & 0xffffffff
         if d or not parts: parts.append(split_operand(d, getattr(self, 'cur_ip', 0)) if getattr(self, 'IB', 0) == 0x400000 else f"0x{d:x}u")
         return "(" + "+".join(parts) + ")"
@@ -429,6 +434,12 @@ class Lifter:
             if r in SEG: return f"0x{SEG[r]:x}u"   # flat model: constant selector
             raise Unsupported(f"register {r}")
         if op.type==X86_OP_MEM:
+            # CalculatePartVisualRep only: NA stock lamps score like USHAR /
+            # BOLT (level 3). Keep the actual part records at stock level 0
+            # so default installation, unlocks, prices and meshes stay stock.
+            if getattr(self, 'IB', 0) == 0x400000 and getattr(self, 'cur_ip', 0) == 0x5142f1:
+                value = 'MR8' + self.ea(op.mem)
+                return f"((MR32(c->esp+20u)==46u && (MR32(c->esi)==0x2a7ef678u || MR32(c->esi)==0x572b056bu)) ? (({value}&0x1fu)|0x60u) : {value})"
             return {1:'MR8',2:'MR16',4:'MR32',8:'MR64'}[op.size] + self.ea(op.mem)
         raise Unsupported("operand type")
 

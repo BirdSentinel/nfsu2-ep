@@ -1099,7 +1099,7 @@ void sub_0050c2c0(CPU *c){
 #define FECARS_PLAYER   0xab4cu
 #define STOCK_N         48u
 #define STOCK_SZ        0x1cu
-#define CARTYPES_N      46u           /* the builder walks 0x189E0 bytes of CarTypeInfo */
+#define CARTYPES_N      addon_car_count
 void sub_004df9c0_orig(CPU *c);
 void sub_00516500(CPU *c);
 void sub_004df9c0(CPU *c){
@@ -1222,7 +1222,7 @@ void sub_0061c600(CPU *c){
         clock_gettime(CLOCK_MONOTONIC, &t1);
         uint32_t h = MR32(c->esp + 4u), t = MR32(CARTYPEINFO);
         char nm[16] = "?";
-        for (uint32_t k = 0; t && k < 46u; k++)
+        for (uint32_t k = 0; t && k < addon_car_count; k++)
             if (MR32(t + k * 0x890u + 0xd0u) == h){
                 for (int i = 0; i < 15 && MR8(t + k * 0x890u + (uint32_t)i); i++){ nm[i] = (char)MR8(t + k * 0x890u + (uint32_t)i); nm[i + 1] = 0; }
                 break; }
@@ -1572,7 +1572,7 @@ void sub_00574670(CPU *restrict c){
 #endif
     decompress_block(c);
 #ifdef __wasi__
-    if (size == 350748u && range_committed(out, size)) {
+    if ((size == 350748u || size == 350684u) && range_committed(out, size)) {
         extern void vinyl_png_decoded(uint32_t, uint32_t);
         vinyl_png_decoded(out, size);
     }
@@ -1602,7 +1602,9 @@ void sub_00574670(CPU *restrict c){
 void sub_0061b980_orig(CPU *c);
 static struct { uint32_t key, prev, part; uint8_t type, slot, lvl, used; } g_pm[PARTMEMO_N];
 static uint32_t g_pm_n, g_pm_tabs[4];
+extern int addon_rack_query(CPU *c);
 void sub_0061b980(CPU *restrict c){
+    if (addon_rack_query(c)) return;
     static int mode = -1;
     if (mode < 0){ const char *e = getenv("NFSU2_PARTMEMO"); mode = e && *e == '0' ? 0 : e && *e == '2' ? 2 : 1; }
     uint32_t e = c->esp, db = c->ecx;

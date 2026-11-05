@@ -1,0 +1,58 @@
+# Fresh profile -> MX5NA -> Body Shop / Taillights / CRIMSON rack preview.
+# Uses a temporary unlock flag after selecting the NA; no existing saves.
+0     tapuntil RETURN MC_Background.fng 120 4000   # title -> "create a new profile?"
++120  tap LEFT                        # "Yes"
++30   tap RETURN
++240  tap BACK
++8    tap BACK
++8    tap BACK
++8    tap BACK                        # clear the default "NAME"
++20   type ROTEST
++60   dump name
++0    tap RETURN                      # -> "save the profile named ROTEST?"
++240  tap LEFT                        # "Yes" (the default is "No")
++30   tap RETURN
++180  dump saved
++60 tap RETURN
++0    waitfng GarageMain.fng 3000
++240  dump mainmenu
+
+
+
+
+
++0 tap RIGHT
++60 tap RIGHT
++60 tap RIGHT
++60 tap RIGHT
++120 tap RETURN
++300 log mx5na_view_cars
++0 loop 5
++0 tap RIGHT
++180 log step
++0 endloop
++300 log mx5na_view_na
++0 poke 0x838464 1 byte
++0 tap RETURN
++300 log mx5na_view_shop
++0 tap RETURN
++300 log mx5na_view_body
++0 loop 7
++0 tap RIGHT
++180 log category
++0 endloop
++300 log mx5na_view_taillights
++0 tap RETURN
++300 log mx5na_view_stock
++0 tap DOWN
++900 log mx5na_view_crimson
++0 pad connect
++0 axis RY 1
++600ms axis RY 0
++0 axis RX 1
++500ms axis RX 0
++300 log mx5na_view_rack_angle
++300 log mx5na_done
+
+
+

@@ -5,6 +5,12 @@
 #include <stdint.h>
 #include <string.h>
 #include "splitscreen_mem.h"
+/* Optional, separately indexed car packs. Retail tables still default to 46. */
+extern uint32_t addon_car_count;
+uint32_t addon_part_count(void);
+static inline uint32_t addon_donor_type(uint32_t type) {
+    return addon_car_count == 47u && type == 46u ? 4u : type;
+}
 
 /* Guest memory base. Guest 32-bit address -> host address in one ARM64 instruction:
  *   ldr w0, [x_base, w_addr, uxtw]        (zero extra cost)              */

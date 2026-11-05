@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id),models=window.VINYL_MODELS||{},cars=Object.keys(models),SIZE=512;
-const names={'240SX':'Nissan 240SX',ESCALADE:'Cadillac Escalade',PEUGOT:'Peugeot 206',HUMMER:'Hummer H2',NAVIGATOR:'Lincoln Navigator',GOLF:'Volkswagen Golf',IMPREZAWRX:'Subaru Impreza WRX',LANCEREVO8:'Mitsubishi Lancer Evo VIII'};
+const names={'240SX':'Nissan 240SX',MIATA:'Mazda Miata NB',MX5NA:'Mazda MX-5 NA (1994)',ESCALADE:'Cadillac Escalade',PEUGOT:'Peugeot 206',HUMMER:'Hummer H2',NAVIGATOR:'Lincoln Navigator',GOLF:'Volkswagen Golf',IMPREZAWRX:'Subaru Impreza WRX',LANCEREVO8:'Mitsubishi Lancer Evo VIII'};
 let assets=Object.create(null),plans=Object.create(null),current=cars.includes('240SX')?'240SX':cars[0],selectedId=null,selectedAsset=null,tool='select',relocating=false,busy=false,dirty=false,viewer;
 const undo=[],redo=[],clone=o=>JSON.parse(JSON.stringify(o)),uid=()=>crypto.randomUUID?crypto.randomUUID():'id-'+Date.now()+'-'+Math.random().toString(36).slice(2);
 const tex=document.createElement('canvas');tex.width=tex.height=SIZE;const ctx=tex.getContext('2d'),preview=$('texture').getContext('2d');

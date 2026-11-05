@@ -15,6 +15,14 @@ SETTINGS_READERS = {
 
 def operand(value, ip=0, immediate=False):
     value &= 0xffffffff
+    # Car-count operands in the retail NA loader and its consumers (the same
+    # sites used by NFSU2Unlimiter). Patch the lifted expressions, not EXE bytes.
+    if immediate and value == 0x189e0 and ip in (0x41ab81, 0x5165ba, 0x5207b2, 0x609347, 0x6099b0, 0x636c22):
+        return '(addon_car_count * 0x890u)'
+    if immediate and value == 46 and ip in (0x5596c9, 0x5efc59, 0x61014e, 0x61c66f, 0x6372b2, 0x513d1b):
+        return 'addon_car_count'
+    if immediate and value == 0x3e80 and ip in (0x5efc42, 0x5f04a3, 0x5f0674):
+        return 'addon_part_count()'
     if ip in SETTINGS_READERS and 0x83aa64 <= value < 0x83aab4:
         return f'split_settings_address(0x{value:x}u)'
     if immediate and value == 0x64000 and ip in (0x48cd61, 0x48cd6b, 0x48cd90, 0x48cd9c):

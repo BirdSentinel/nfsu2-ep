@@ -218,7 +218,15 @@ static void music_brand(uint32_t o){
     MR32(o + O_FLAGS) |= 2u | F_DIRTY;
     fprintf(stderr, "[branding] music notification: EP GAMES TRAX\n");
 }
-static void blue_accent(uint32_t o, unsigned depth){
+/* World-map legend rows use generic DATA_B_n / DATA_D_n images, not
+ * the minimap's ICESHOPINDICATOR names. Their colours encode categories. */
+static int map_legend_icon(uint32_t h){
+    return (h >= 0xa148528au && h <= 0xa1485292u) || /* DATA_B_1..9 */
+           (h >= 0xca52a3fau && h <= 0xca52a3feu) || /* DATA_B_10..14 */
+           (h >= 0xa1485b0cu && h <= 0xa1485b14u) || /* DATA_D_1..9 */
+           (h >= 0xca53bcbcu && h <= 0xca53bcc0u);   /* DATA_D_10..14 */
+}
+static void blue_accent(uint32_t o, unsigned depth, int world_map){
     if (depth > 16) return;
     for (unsigned n = 0; o && n < 2048 && ok(o, 0x70u); n++, o = MR32(o + O_NEXT)){
         uint32_t type = MR32(o + O_TYPE), d = MR32(o + O_DATA);
@@ -246,15 +254,25 @@ static void blue_accent(uint32_t o, unsigned depth){
                 }
             }
             int b = (int)MR32(d), g = (int)MR32(d + 4), r = (int)MR32(d + 8);
+            /* Shop colours identify their map category, not the menu theme.
+             * Keep MINIMAP_ICE and SHOP_ICON_INTERIORS at their retail tint
+             * (also used by the world map/legend), including alpha/fades. */
+            uint32_t object_hash = MR32(o + O_HASH);
+            /* HUD_FreeRoam's eight ICESHOPINDICATOR_0..7 images share
+             * generic marker artwork, so identify those by object name. */
+            int specialty_icon = type == T_IMAGE &&
+                (tex == 0xb46342bau || tex == 0x3f40e75fu || object_hash == 0xb46342bau ||
+                 (object_hash >= 0xa71e35f6u && object_hash <= 0xa71e35fdu) ||
+                 (world_map && map_legend_icon(object_hash)));
             /* Yellow-green menu accents, including the pale selected glow. */
-            if (g > 40 && g <= 255 && r >= g * 55 / 100 && r <= g && b >= 0 && b < g * 80 / 100 && g - b > 25){
+            if (!specialty_icon && g > 40 && g <= 255 && r >= g * 55 / 100 && r <= g && b >= 0 && b < g * 80 / 100 && g - b > 25){
                 MR32(d) = (uint32_t)(g * 202 / 255);
                 MR32(d + 4) = (uint32_t)(g * 148 / 255);
                 MR32(d + 8) = (uint32_t)(g * 24 / 255);
                 MR32(o + O_FLAGS) |= F_DIRTY;
             }
         }
-        if (type == T_GROUP) blue_accent(MR32(o + O_KIDS), depth + 1);
+        if (type == T_GROUP) blue_accent(MR32(o + O_KIDS), depth + 1, world_map);
     }
 }
 void menusize_obj(CPU *c){
@@ -263,7 +281,7 @@ void menusize_obj(CPU *c){
     if (!ok(pkg, 0x50u) || c->ebx != MR32(pkg + P_OBJS)) return;   /* once a package: at its first object */
     const char *nm = pkg_name(pkg);
     if (!nm) return;
-    blue_accent(MR32(pkg + P_OBJS), 0);
+    blue_accent(MR32(pkg + P_OBJS), 0, !strcasecmp(nm, "UI_InGame_WorldMap.fng"));
     dump(pkg, nm);
     int bar = !strcasecmp(nm, BAR_FNG);
     if (bar) g_bar = pkg;

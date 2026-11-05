@@ -47,6 +47,12 @@ def extract(path, names_only=False):
     out=[]; selected=[]
     car=path.parent.name
     wanted={namehash(car+'_'+part+'_A'):car+'_'+part+'_A' for part in ['BASE']+['KIT00_'+s for s in ['BODY','DOOR_LEFT','DOOR_RIGHT','FRONT_BUMPER','REAR_BUMPER','SKIRT','HOOD','TRUNK','ROOF']]}
+    if car == 'MX5NA':
+        # The popup lids are paintable; their separate fixed-plastic housings
+        # must remain visible context and excluded from decal projection.
+        for side in ('LEFT', 'RIGHT'):
+            name = f'{car}_KIT00_HEADLIGHT_{side}_A'
+            wanted[namehash(name)] = name
     for name,b,l,hp in objects(path):
         if names_only: print(name); continue
         # Stock, highest detail body panels. Exclude duplicate kits, damage,
@@ -88,7 +94,8 @@ if __name__=='__main__':
     if args.names: extract(Path(args.game)/'CARS'/args.names/'GEOMETRY.BIN',True)
     else:
         models={}; failures={}
-        for car in sorted((Path(args.game)/'CARS').iterdir()):
+        # Keep the separate NA directly after its NB donor in the editor too.
+        for car in sorted((Path(args.game)/'CARS').iterdir(), key=lambda p: 'MIATA~' if p.name == 'MX5NA' else p.name):
             if not (car/'VINYLS.BIN').exists(): continue
             try: models[car.name]=extract(car/'GEOMETRY.BIN')
             except Exception as err: failures[car.name]=str(err)

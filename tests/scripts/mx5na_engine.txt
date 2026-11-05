@@ -1,0 +1,79 @@
+# MX5NA: preview all NB trunk layouts, install Custom and a Kicker speaker.
+0     tapuntil RETURN MC_Background.fng 120 4000   # title -> "create a new profile?"
++120  tap LEFT                        # "Yes"
++30   tap RETURN
++240  tap BACK
++8    tap BACK
++8    tap BACK
++8    tap BACK                        # clear the default "NAME"
++20   type ROTEST
++60   dump name
++0    tap RETURN                      # -> "save the profile named ROTEST?"
++240  tap LEFT                        # "Yes" (the default is "No")
++30   tap RETURN
++180  dump saved
++60 tap RETURN
++0    waitfng GarageMain.fng 3000
++240  dump mainmenu
+
+
+
+
+
++0 tap RIGHT
++60 tap RIGHT
++60 tap RIGHT
++60 tap RIGHT
++120 tap RETURN
++300 log mx5na_view_cars
++0 loop 5
++0 tap RIGHT
++180 log step
++0 endloop
++300 log mx5na_view_na
++0 poke 0x838464 1 byte
++0 tap RETURN
++300 log mx5na_view_shop
++0 loop 3
++0 tap RIGHT
++120 log shop_category
++0 endloop
++300 log mx5na_view_audio_menu
++0 tap RETURN
++300 log mx5na_view_specialties
++0 tap RIGHT
++180 log mx5na_view_neon_category
++0 tap RETURN
++300 log mx5na_view_neonmenu
++0 tap RIGHT
++300 log mx5na_view_engineneon
+
++0 call 0x5a64a0 ecx=0x8395b0 3 0
++0 call 0x5a64a0 ecx=0x8395b0 3 5
++0 call 0x5a64a0 ecx=0x8395b0 3 8
++0 call 0x55c230 ecx=0x838980 13 (*0x839884+42)
++180 log engine_preview
++0 tap RETURN
++300 log mx5na_view_stock_engine
++0 pad connect
++0 axis RY 0.5
++90 axis RY 0
++0 call 0x4c1860 0 1 0x3f800000
++400 log mx5na_view_hood_open
++0 tap DOWN
++300 log mx5na_view_blue_neon
++0 tap DOWN
++300 log mx5na_view_red_neon
++0 axis RX 1
++200 axis RX 0
++200 log mx5na_view_hinge_side
++0 call 0x4c1860 0 0 0x3f800000
++400 log mx5na_view_hood_closed
++240 call 0x4c1860 0 1 0x3f800000
++400 log mx5na_done
+
+
+
+
+
+

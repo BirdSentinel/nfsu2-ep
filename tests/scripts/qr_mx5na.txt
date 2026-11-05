@@ -1,0 +1,53 @@
+# Everything the game writes, for the read-only data-folder test (app track):
+# a new profile (typed name, saved), an F12 screenshot request, the options
+# screen, a Quick Race, then Cmd-Q (autotest "close") in the race.
+0     tapuntil RETURN MC_Background.fng 120 4000   # title -> "create a new profile?"
++120  tap LEFT                        # "Yes"
++30   tap RETURN
++240  tap BACK
++8    tap BACK
++8    tap BACK
++8    tap BACK                        # clear the default "NAME"
++20   type ROTEST
++60   dump name
++0    tap RETURN                      # -> "save the profile named ROTEST?"
++240  tap LEFT                        # "Yes" (the default is "No")
++30   tap RETURN
++180  dump saved
++60 tap RETURN
++0    waitfng GarageMain.fng 3000
++240  dump mainmenu
+
+
+
+
+
++0 tap RETURN
++300 log mx5na_view_mode
++0 tap RETURN
++300 log mx5na_view_track
+
++0 tap RETURN
++300 log mx5na_view_options
++0 tap RETURN
++300 log mx5na_view_car
+
++0 expect i:0x83b2d0 == 32
++0 expect i:0x83ae18 == 4
++0 expect i:0x83ae34 == 46
++0 loop 4
++0 tap RIGHT
++240 log mx5na_step
++0 endloop
++600 log mx5na_view_nb
++120 tap RIGHT
++900 log mx5na_view_na
++120 tap RETURN
++300 tap RETURN
++300 tap RETURN
++0 waitmem 0x8654a4 6 6000
++60 expect i:[[$P]+0x10]+0x10 == 46
++540 down UP
++600 log mx5na_view_driving
++120 log mx5na_done
+
