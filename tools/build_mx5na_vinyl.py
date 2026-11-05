@@ -8,6 +8,9 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import os
+
+from mx5na_vinyl_map import make_map
 
 
 def main():
@@ -37,6 +40,20 @@ def main():
     script = out / 'vinyl.u2s'
     script.write_text('\n'.join(f'tex_rename {rel} {n} MX5NA_{n[6:]}' for n in names) + '\n', encoding='utf8')
     subprocess.run(command + ['apply', str(launcher), str(out), str(script)], check=True)
+    # Renaming alone leaves NB artwork in the wrong UV islands on the NA.
+    # Reproject the indexed artwork and masks, leaving NA custom PNGs intact.
+    mapping = out / 'na-vinyl-map.bin'
+    make_map(game / 'CARS/MX5NA/GEOMETRY.BIN', game / 'CARS/MIATA/GEOMETRY.BIN').astype('<f4').tofile(mapping)
+    helper = out / 'atlas-helper'
+    env = dict(os.environ, DOTNET_CLI_HOME=str(out / 'dotnet-home'), DOTNET_SKIP_FIRST_TIME_EXPERIENCE='1')
+    tools = Path(__file__).resolve().parent
+    subprocess.run([str(a.dotnet.resolve()), 'build', str(tools / 'fit-vinyl-atlas/fit-vinyl-atlas.csproj'),
+                    '--configfile', str(tools / 'car-textures/NuGet.Config'), '-o', str(helper),
+                    '--nologo', '-v:q'], check=True, env=env)
+    fitted = archive.with_suffix('.fitted.bin')
+    subprocess.run([str(a.dotnet.resolve()), str(helper / 'fit-vinyl-atlas.dll'), str(archive),
+                    str(fitted), str(mapping), str((a.converter / 'bin').resolve())], check=True, env=env)
+    fitted.replace(archive)
     print(f'Created {archive} ({len(names)} renamed textures)')
 
 

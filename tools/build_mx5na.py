@@ -86,6 +86,11 @@ def main():
     split_doors(out / 'GEOMETRY.BIN', a.game / 'CARS/MIATA/GEOMETRY.BIN', out / 'GEOMETRY.BIN')
     from fix_mx5na_engine import geometry as fit_engine, animations as fit_hood_hinges, NAMES as engine_models, TEXTURES as engine_textures
     fit_engine(out / 'GEOMETRY.BIN', a.game / 'CARS/MIATA/GEOMETRY.BIN', out / 'GEOMETRY.BIN')
+    from fix_mx5na_license_plate import geometry as fit_license_plate
+    fit_license_plate(out / 'GEOMETRY.BIN', a.game / 'CARS/PLATES/GEOMETRY.BIN', out / 'GEOMETRY.BIN')
+    from fix_mx5na_decals import patch as fit_decals, NAMES as decal_models
+    fit_decals(out / 'GEOMETRY.BIN', a.game / 'CARS/MIATA/GEOMETRY.BIN', out / 'GEOMETRY.BIN')
+    objects += ['MX5NA_DECAL_' + name + '_A' for name in decal_models]
     nb_tail_textures(out / 'TEXTURES.BIN', raw_textures, out / 'TEXTURES.BIN', engine_textures)
     objects += ['MX5NA_' + name for name in engine_models]
     objects += [f'MX5NA_KIT00_DOOR_{side}_{lod}' for side in ('LEFT', 'RIGHT') for lod in 'ABC']

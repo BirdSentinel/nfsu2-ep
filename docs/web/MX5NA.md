@@ -109,7 +109,15 @@ Race without an unlock cheat.
 
 ## Vinyl Studio
 
-The supplied mod has no vinyl pack. Build an independent renamed donor pack:
+`fix_mx5na_decals.py` supplies the missing NB decal meshes for both windows,
+both doors, both quarter panels and the hood layouts. It subdivides the donor
+patches and projects them onto the actual NA glass/paint triangles, keeping the
+slot texture bindings and UVs. A 2 mm normal offset prevents surface overlap.
+Existing car solids are retained byte for byte. `tests/mx5na_decals.py` validates
+the source/donor/staged geometry triple.
+
+The supplied mod has no vinyl pack. Build an independent donor pack fitted to
+the NA's paint UV atlas (Python requires NumPy):
 
 ```powershell
 python tools/build_mx5na_vinyl.py --game D:/Games/Egyuttparkolas/game `
@@ -123,6 +131,15 @@ it with the current Vinyl Studio sources. The NA is listed immediately after
 the NB, using its own geometry and CARSKIN UVs. Export writes
 `game/CARS/MX5NA/VINYLS/MX5NA_CONTEST_01.png`; after restarting the game, select
 Vinyls > Contest > AinGide on the NA. The NB's pack and artwork are independent.
+
+The NA atlas has different panel placement and orientation from the NB atlas.
+`mx5na_vinyl_map.py` recovers their five paint projections and rasterizes the NB
+coordinates into the existing NA UV islands, with gutters around panel edges.
+`fit-vinyl-atlas` applies that map to all seven indexed mip levels of every
+vinyl and mask, retaining palettes, hashes and texture metadata. Every compressed
+blob is decoded again and compared before saving. Rebuild from the NB source,
+not an already fitted NA pack. The geometry and user-authored NA PNG overrides
+are unchanged; the full car conversion should run before this vinyl builder.
 
 Binarius-authored vinyl packs have no 64-byte padding before the palette.
 `runtime/web/vinyl_png.c` supports both retail and addon layouts, preserving
