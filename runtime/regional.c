@@ -226,11 +226,18 @@ int addon_rack_query(CPU *c) {
     uint32_t e = c->esp;
     if (addon_car_count != 47u || !g_na_rack || MR32(e+4u) != 46u || MR32(e+8u) != 12u) return 0;
     CPU initial = *c;
+    /* 0x61B980 reuses its car-type and slot arguments for the slot mask and
+     * owner-list pointer. Restoring registers alone would pass those scratch
+     * values to 0x6101E0 on the next query, indexing outside the owner table. */
+    uint32_t frame[6];
+    memcpy(frame, g_mem + e, sizeof frame);
     for (unsigned n = 0; n < 4; n++) {
         sub_0061b980_orig(c);
         uint32_t part = c->eax, key = part ? MR32(part) : 0;
         if (key != 0x45f085d5u && key != 0x0954cebdu) return 1;
-        *c = initial; MR32(e+16u) = part;
+        *c = initial;
+        memcpy(g_mem + e, frame, sizeof frame);
+        MR32(e+16u) = part;
     }
     c->eax = 0; POP32(c->eip); c->esp += 20u;
     return 1;
