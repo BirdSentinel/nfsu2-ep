@@ -243,7 +243,7 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 # ---- Game ----------------------------------------------------------------
 
 # Intro, story and FMV movies.  [NOMOVIES, inverted]
-#movies = on
+#movies = off
 
 # The movies at startup (EA and THX logos, the PSA, the intro): skippable =
 # Enter, Escape, Space, a left click or a controller's A, B or Start ends each
@@ -280,7 +280,7 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 # tracks) play there too, as in the other races, at the game's music volume;
 # off = as in the original game, which has none there, so you hear the
 # engine for shifting.  [NFSU2_RACE_MUSIC]
-#race_music = off
+#race_music = on
 
 # Sound output.  [NOSOUND, inverted]
 #sound = on
@@ -295,7 +295,7 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 
 # Unlock cars, customization parts and events for this session. Off restores
 # normal progression checks on the next game start. [NFSU2_UNLOCK_EVERYTHING]
-#unlock_everything = off
+#unlock_everything = on
 
 # The career's 33 hidden races on the world map and the radar like the
 # others, as MaxHwoy's Show Hidden Races Mod (nfsmods.xyz/mod/1583) has
@@ -303,7 +303,7 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 # 1 to 4), so the ones once hidden take no others off it.  off = the
 # original game: a hidden race shows only when you drive near it.
 # [NFSU2_SHOW_HIDDEN_RACES]
-#show_hidden_races = off
+#show_hidden_races = on
 
 # The car's visual rating set by the career's stage, not by its parts, as
 # thelink2012's Visual Reputation Remover (github.com/thelink2012/novisualrep)
@@ -311,12 +311,12 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 # load, a cover pays by that rating, and the shops show no Visual Rating box.
 # off = the original game.
 # [NFSU2_VISUAL_REP_REMOVER]
-#visual_rep_remover = off
+#visual_rep_remover = on
 
 # What the game does while this tab is hidden or another window is active:
 # "pause" freezes it and pauses its sound, like alt-tab on Windows; "run"
 # keeps it going.  [NFSU2_BACKGROUND]
-#background = pause
+#background = run
 
 # Seconds the game gets to shut down after "Quit game" before it is stopped
 # anyway (open save files are always finished first).  [NFSU2_QUIT_GRACE]
@@ -399,7 +399,7 @@ export const TEMPLATE = `# NFSU2 settings, read at every launch.
 # hold, as on a slow phone); uncapped = no pacing (benchmark only);
 # off = the game's own 1/120 s limiter, the timing before the frame-rate
 # work.  Cutscenes stay at 30 fps in every mode.  [NFSU2_FPS]
-#fps = auto
+#fps = 120
 # Fixes for subsystems that count frames: default (all above 60 fps, none
 # at 60, ticks,particles,rain,spinners at 30), all, none, or a list of
 # ticks,timer,particles,trail,audio,rtf,rain,spinners (a leading '-' removes
@@ -610,7 +610,10 @@ export const DEFAULTS: ReadonlyMap<string, string> = (() => {
 // set the autotest "quit" command and the forced-quit path would only raise
 // a flag nobody reads (autotest.c do_quit, lifecycle.c leave).
 export const APP_DEFAULTS: Readonly<Record<string, string>> = {
-  ALARM: '0', FIXMAT: '0', FIXMAT_MODE: '3', NOMOVIES: '0', SNDSYNC: '0', GPUVS: '1',
+  ALARM: '0', FIXMAT: '0', FIXMAT_MODE: '3', NOMOVIES: '1', SNDSYNC: '0', GPUVS: '1',
+  NFSU2_UNLOCK_EVERYTHING: '1', NFSU2_RACE_MUSIC: '1',
+  NFSU2_BACKGROUND: 'run', NFSU2_FPS: '120',
+  NFSU2_SHOW_HIDDEN_RACES: '1', NFSU2_VISUAL_REP_REMOVER: '1',
   NFSU2_READONLY_DATA: '1',
   // the browser's: play in the window unless settings.ini asks for full screen
   NFSFULL: '0',

@@ -54,11 +54,12 @@ async function createClient(id, initiallyStudio) {
       try { fs.copyFileSync(path.join(root, 'UserData', 'connection.json'), connectionFile, fs.constants.COPYFILE_EXCL); }
       catch (error) { if (!['ENOENT', 'EEXIST'].includes(error.code)) throw error; }
     }
-  let connection = { server: '', online: false };
+  // First launch only: saved connection preferences below always take priority.
+  let connection = { server: 'http://85.255.1.94:8080', online: true };
   try {
     const saved = JSON.parse(fs.readFileSync(connectionFile, 'utf8'));
     connection = { server: normalizeServer(saved.server || ''), online: saved.online === true };
-  } catch { /* first start, or invalid settings: offline */ }
+  } catch { /* first start, or invalid settings: use the default connection */ }
   const online = createOnline(() => connection.online ? connection.server : '');
   let server, win;
   let studioWindow, studioVisible = false, requestedStudio = initiallyStudio;
