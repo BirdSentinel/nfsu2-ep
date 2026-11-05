@@ -12,8 +12,10 @@
 // - renaming a profile (profile.ts renameProfile) moves its folder, file and
 //   cover shoots, changes the name inside and the two checksums it moves, and
 //   nothing else; a refused rename, or one that fails halfway, leaves the saves as they were
+// - deleting a profile (profile.ts deleteProfile, the Saves tab's bin) takes its folder and its cover shoots in any
+//   case, and nothing of another profile: not one whose name starts with it, nor its covers
 // - a first profile's name field starts with Your name's letters and digits (profile.ts newProfileName), never NAME,
-//   Player or a slur
+//   Player or a slur; a profile of a name of up to 15 with spaces is renamed like any other
 // The profiles here are synthetic (the layout of profile.ts's header comment).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -192,6 +194,26 @@ test('a rename moves the profile, its cover shoots and its autosave line, and ch
   assert.equal(fs.writes.findIndex(w => w.startsWith('-')), fs.writes.length - 3, 'the old folders go last');
 });
 
+test('a delete takes the profile and its cover shoots, any case, and nothing else', async () => {
+  const fs = folder({
+    [at('TOBI')]: profile('TOBI'), [`${DIR}/TOBI/notes.txt`]: 'x', [`${DIR}/TOBI DVD 1/TOBI DVD 1`]: cover(),
+    [`${DIR}/tobi Magazine 12/tobi Magazine 12`]: cover(),
+    [at('TOBIAS')]: profile('TOBIAS'), [`${DIR}/TOBIAS DVD 1/TOBIAS DVD 1`]: cover(), [at('TOB')]: profile('TOB'),
+    [at('Big Bad Wolf')]: profile('Big Bad Wolf'), [`${DIR}/Big Bad Wolf DVD 2/Big Bad Wolf DVD 2`]: cover(),
+    [P.AUTOSAVE_SEEN]: '# head\nTOBI\n', 'registry.txt': 'r', 'nfsu2-2026-11-05_12-00-00.png': 'png',
+  });
+  const before = new Map(fs.m);
+  assert.deepEqual(await P.deleteProfile(fs, DIR, 'TOBI'), { folders: 3 });
+  assert.deepEqual(fs.writes.sort(), [`-${DIR}/TOBI`, `-${DIR}/TOBI DVD 1`, `-${DIR}/tobi Magazine 12`].sort(), 'only removes, no writes');
+  assert.deepEqual([...fs.m.keys()].sort(), [...before.keys()].filter(k => !/\/(TOBI|TOBI DVD 1|tobi Magazine 12)\//.test(k)).sort());
+  for (const [k, v] of fs.m) assert.equal(v, before.get(k), `${k} untouched`);
+  assert.deepEqual(await P.deleteProfile(fs, DIR, 'Big Bad Wolf'), { folders: 2 }, 'a name with spaces, and its cover');
+  assert.ok(fs.m.has(at('TOBIAS')) && fs.m.has(`${DIR}/TOBIAS DVD 1/TOBIAS DVD 1`) && fs.m.has(at('TOB')));
+  assert.deepEqual(await P.deleteProfile(fs, DIR, 'NOBODY'), { folders: 0 }, 'no such profile: nothing goes');
+  assert.deepEqual(await P.deleteProfile(fs, 'Other', 'TOBIAS'), { folders: 0 }, 'only in the profiles folder');
+  assert.ok(fs.m.has(at('TOBIAS')));
+});
+
 test('a change of case only is a rename; a longer name inside is cleared', async () => {
   const fs = folder({ [at('tobi')]: profile('tobi', 1, 1, { inside: 'TOBI' }) });
   assert.deepEqual(await P.renameProfile(fs, DIR, 'tobi', 'Tobi'), { files: 1 });
@@ -246,7 +268,7 @@ test('a refused rename writes nothing', async () => {
     assert.match(r.refused ?? '', re, `${from} -> ${to}: ${JSON.stringify(r)}`);
     assert.deepEqual(fs.writes, []);
   };
-  for (const bad of ['', 'ABCDEFGH', 'A B', 'A-B', 'Thé', 'A/B', '..']) await refused('TOBI', bad, /1 to 7 letters and digits/);
+  for (const bad of ['', 'ABCDEFGH', 'A B', 'A-B', 'Thé', 'A/B', '..', 'Big Bad Wolf', 'Bob DVD 1']) await refused('TOBI', bad, /1 to 7 letters and digits/);
   await refused('TOBI', 'auto', /There is a profile AUTO already/);
   await refused('TOBI', 'new', /cover shoot NEW DVD 2/);
   await refused('BROKEN', 'FIXED', /BROKEN cannot be renamed here: its checksums/);
@@ -255,20 +277,38 @@ test('a refused rename writes nothing', async () => {
 });
 
 test('a rename that fails halfway leaves the profile as it was', async () => {
-  const fs = folder({ [at('TOBI')]: profile('TOBI'), [`${DIR}/TOBI DVD 1/TOBI DVD 1`]: cover() });
-  const before = new Map(fs.m);
-  const write = fs.writeFile;
-  let n = 0;
-  fs.writeFile = async (p, d) => { if (++n === 2) throw new Error('disk full'); return write(p, d); };
-  await assert.rejects(P.renameProfile(fs, DIR, 'TOBI', 'BOB'), /disk full/);
-  assert.deepEqual([...fs.m.keys()].sort(), [...before.keys()].sort());
-  for (const [k, v] of before) assert.equal(fs.m.get(k), v);
+  for (const [from, to] of [['TOBI', 'BOB'], ['Big Bad Wolf', 'TOBI'], ['Big Bad Wolf', 'BIGBAD']])
+    for (const failAt of [1, 2, 3]) {
+      const fs = folder({ [at(from)]: profile(from), [`${DIR}/${from} DVD 1/${from} DVD 1`]: cover(), [`${DIR}/${from}/GARAGE.DAT`]: 'g' });
+      const before = new Map(fs.m);
+      const write = fs.writeFile;
+      let n = 0;
+      fs.writeFile = async (p, d) => { if (++n === failAt) throw new Error('disk full'); return write(p, d); };
+      await assert.rejects(P.renameProfile(fs, DIR, from, to), /disk full/, `${from} -> ${to}, write ${failAt}`);
+      assert.deepEqual([...fs.m.keys()].sort(), [...before.keys()].sort(), `${from} -> ${to}, write ${failAt}`);
+      for (const [k, v] of before) assert.equal(fs.m.get(k), v);
+    }
 });
 
 test('cover shoots are told from profiles by their folder name', () => {
   assert.deepEqual(P.coverOf('CLAUDE DVD 1'), { profile: 'CLAUDE', cover: 'DVD 1' });
   assert.deepEqual(P.coverOf('A B Magazine 10'), { profile: 'A B', cover: 'Magazine 10' });
+  assert.deepEqual(P.coverOf('Big Bad__Wolf-2 Magazine 12'), { profile: 'Big Bad__Wolf-2', cover: 'Magazine 12' });
   for (const f of ['CLAUDE', 'DVD 1', 'CLAUDE DVD', 'CLAUDE dvd 1', 'CLAUDE DVD 1x']) assert.equal(P.coverOf(f), null, f);
+  // and no profile's name looks like one, in any case (the I/O worker finds folders in any case)
+  for (const f of ['CLAUDE DVD 1', 'A B Magazine 10', 'CLAUDE dvd 1', 'x MAGAZINE 3', 'DVD 1']) assert.equal(P.isProfileName(f), false, f);
+  for (const f of ['CLAUDE DVD', 'MyDVD 1', 'DVD X1', 'Magazine', 'A B', 'Big Bad__Wolf-2', 'TOBI', 'a']) assert.equal(P.isProfileName(f), true, f);
+});
+
+test('a profile with a long name (from the PC game, or another browser) is renamed to a name the page gives, covers and all', async () => {
+  const dvd = cover(), long = 'Big Bad__Wolf-2';
+  const fs = folder({ [at(long)]: profile(long, 1, 1), [`${DIR}/${long} DVD 1/${long} DVD 1`]: dvd, [`${DIR}/${long}/GARAGE.DAT`]: 'g' });
+  assert.deepEqual(mode(fs.m.get(at(long)), long), { mode: 'autosave' }, 'the checks take the long name');
+  assert.deepEqual(await P.renameProfile(fs, DIR, long, 'TOBI'), { files: 3 });
+  assert.equal(name(fs.m.get(at('TOBI'))), 'TOBI');
+  assert.ok(fs.m.get(at('TOBI')).subarray(36 + 53765, 36 + 53761 + 32).every(b => b === 0), 'NUL-padded after the long name');
+  assert.equal(fs.m.get(`${DIR}/TOBI DVD 1/TOBI DVD 1`), dvd);
+  assert.ok(![...fs.m.keys()].some(k => k.includes(long)));
 });
 
 test('a first profile\'s name field starts with Your name, as the game\'s field takes it', () => {

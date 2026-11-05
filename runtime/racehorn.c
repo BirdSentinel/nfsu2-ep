@@ -25,8 +25,8 @@
  *     player without one, nothing for the others' cars.)
  * The port also carries the players' frame rates ("N2FS"), the joiners' car
  * states straight from their games ("N2CS") and the creator's list of the
- * joiners they go to ("N2PL"), which go to racenet.c, and quick chat ("N2QC",
- * below: qc_*).
+ * joiners they go to ("N2PL"), which go to racenet.c, a racer's Quit
+ * ("N2QT", which goes to mprace.c) and quick chat ("N2QC", below: qc_*).
  * Only in the browser, where Online and the virtual LAN are; the Mac's LAN
  * has no such port (the weak stand-ins below). */
 #include "cpu.h"
@@ -58,6 +58,7 @@
 __attribute__((weak)) int vlan_rt_send(uint16_t port, uint32_t ip_h, const void *p, int n){ (void)port; (void)ip_h; (void)p; (void)n; return -1; }
 __attribute__((weak)) int vlan_rt_recv(uint16_t port, uint32_t *ip_h, void *p, int cap){ (void)port; (void)ip_h; (void)p; (void)cap; return -1; }
 __attribute__((weak)) int vlan_race_peers(uint32_t *ip_h, int max, uint32_t within_ms){ (void)ip_h; (void)max; (void)within_ms; return 0; }
+__attribute__((weak)) int vlan_race_sent_to(uint32_t ip_h, uint32_t within_ms){ (void)ip_h; (void)within_ms; return 0; }
 __attribute__((weak)) int vlan_rt_say_pick(void){ return -1; }
 __attribute__((weak)) int vlan_rt_said(const char *json, int n){ (void)json; (void)n; return -1; }
 /* status_web.c in the browser; the Mac has no page */
@@ -222,10 +223,14 @@ static void qc_status(void){
 void racenet_heard(uint8_t *m, int n, uint32_t from);   /* racenet.c: the players' frame rates, */
 void racenet_carspam(CPU *c, const uint8_t *m, int n, uint32_t from);   /*   a joiner's car state straight from its game, */
 void racenet_list(const uint8_t *m, int n, uint32_t from);              /*   and the creator's list of the joiners */
+void mprace_quit_heard(uint8_t *m, int n, uint32_t from);              /* mprace.c: a racer that quit the race */
+void racecars_heard(const uint8_t *m, int n, uint32_t from);           /* racecars.c: a racer's car from its game */
 static void got(CPU *c, uint8_t *m, int n, uint32_t from, uint32_t now){
+    if (n >= 4 && !memcmp(m, "N2RS", 4)){ racecars_heard(m, n, from); return; }
     if (n >= 4 && !memcmp(m, "N2FS", 4)){ racenet_heard(m, n, from); return; }
     if (n >= 4 && !memcmp(m, "N2CS", 4)){ racenet_carspam(c, m, n, from); return; }
     if (n >= 4 && !memcmp(m, "N2PL", 4)){ racenet_list(m, n, from); return; }
+    if (n >= 4 && !memcmp(m, "N2QT", 4)){ mprace_quit_heard(m, n, from); return; }
     if (n >= MSG_N && !memcmp(m, "N2QC", 4)){ if (m[4] == 1) qc_got(m, from, now); return; }
     if (n < MSG_N || memcmp(m, "N2HN", 4) || m[4] != 1) return;
     char name[NAME_N];

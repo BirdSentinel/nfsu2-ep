@@ -54,6 +54,16 @@ fn unhex(s: &str) -> Vec<u8> {
     (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).expect("hex")).collect()
 }
 
+// the C core's version (roam_core.h RC_CORE_VER), which its HELLO says
+fn c_core_ver() -> u16 {
+    let hdr = std::fs::read_to_string(repo().join("runtime/roam_core.h")).expect("roam_core.h");
+    hdr.lines()
+        .find_map(|l| l.strip_prefix("#define RC_CORE_VER"))
+        .and_then(|r| r.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
+        .expect("RC_CORE_VER")
+}
+
 // the wire: what roam_core sends the hub reads, and its PEERS lists decode in roam_core
 #[test]
 fn the_wire_what_roam_core_sends_the_hub_reads_and_its_peers_lists_decode_in_roam_core() {
@@ -87,14 +97,7 @@ fn the_wire_what_roam_core_sends_the_hub_reads_and_its_peers_lists_decode_in_roa
         String::from_utf8_lossy(&o.stdout).trim().to_string()
     };
     let (h, s, b) = (unhex(&run(&["hello"])), unhex(&run(&["snap"])), unhex(&run(&["bye"])));
-    // the C core's version (roam_core.h RC_CORE_VER), which its HELLO says
-    let hdr = std::fs::read_to_string(repo().join("runtime/roam_core.h")).expect("roam_core.h");
-    let core: u16 = hdr
-        .lines()
-        .find_map(|l| l.strip_prefix("#define RC_CORE_VER"))
-        .and_then(|r| r.split_whitespace().next())
-        .and_then(|v| v.parse().ok())
-        .expect("RC_CORE_VER");
+    let core = c_core_ver();
     assert_eq!(
         decode_roam(&h),
         Some(RoamMsg::Hello { sender: 0x1234ABCD, core, status: 2, room: fnv1a("blue"), name: "Ann K.".into(), crews: vec![] })
@@ -213,7 +216,7 @@ fn the_wire_a_sessions_hello_to_the_hub_says_the_links_it_wants() {
         l.both_ends();
         assert_eq!(l.of(0).len(), want, "{arg:?}");
         match decode_roam(&h) {
-            Some(RoamMsg::Hello { core, crews, .. }) => assert_eq!((core, crews.len()), (11, 2), "its crews still read"),
+            Some(RoamMsg::Hello { core, crews, .. }) => assert_eq!((core, crews.len()), (c_core_ver(), 2), "its crews still read"),
             other => panic!("not its HELLO: {other:?}"),
         }
     }
@@ -465,17 +468,18 @@ fn links_stay_put_at_the_edge_players_come_and_go() {
     }
 }
 
-// limits: two endpoints a browser, a player starts with its HELLO, bad datagrams counted
+// limits: three endpoints a browser (co-op's two players and a restart's), a player starts with its HELLO, bad
+// datagrams counted
 #[test]
-fn limits_two_endpoints_a_browser_a_player_starts_with_its_hello_bad_datagrams_counted() {
+fn limits_three_endpoints_a_browser_a_player_starts_with_its_hello_bad_datagrams_counted() {
     let mut k = Kit::new(RoamOptions::default());
-    for port in [47210u16, 47211, 47212] {
+    for port in [47210u16, 47211, 47212, 47213] {
         k.hub.frame(V(0), &frame_ports(V(0), &hello(300 + port as u32), port, 47210));
     }
-    assert_eq!(k.info("players"), 2.0);
+    assert_eq!(k.info("players"), 3.0);
     assert_eq!(k.info("refused"), 1.0);
     k.from(V(1), &snap(301, [0.0, 0.0, 0.0]));
-    assert_eq!(k.info("players"), 2.0, "a SNAP before any HELLO: nobody new");
+    assert_eq!(k.info("players"), 3.0, "a SNAP before any HELLO: nobody new");
     k.hub.frame(V(1), b"nonsense, not a frame at all");
     let mut f = frame(V(1), &hello(301));
     f[30] ^= 0xff;
@@ -900,7 +904,7 @@ fn on_its_thread_busy_workers_cut_the_links() {
     hub.stop();
     assert!(cut.is_ok(), "both workers busy, and the cap stayed");
     let first = lines.lock()[0].clone();
-    assert!(first.ends_with("% busy: at most 36 links a player (was 48)"), "{first}");
+    assert!(first.ends_with("% busy: at most 48 links a player (was 64)"), "{first}");
 }
 
 #[test]

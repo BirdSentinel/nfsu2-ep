@@ -52,7 +52,7 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/burgerking') -Destinatio
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/menu-background.png'), (Join-Path $PSScriptRoot 'assets/menu-floor.png') -Destination (Join-Path $output 'custom')
 $game = Join-Path $output 'game'
 New-Item -ItemType Directory -Path $game | Out-Null
-$entries = 'speed2.exe server.dll server.cfg cars credits frontend global langpacks languages memcard movies nis pfdata sdata sound speech subtitles texpacks tracks' -split ' '
+$entries = 'speed2.exe server.dll server.cfg cars credits frontend global langpacks languages memcard movies nis pfdata sdata sound speech subtitles texpacks tracks vinylpacks' -split ' '
 foreach ($item in Get-ChildItem -LiteralPath $Data) {
     if ($entries -contains $item.Name.ToLowerInvariant()) {
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Game input must not contain links: $($item.FullName)" }

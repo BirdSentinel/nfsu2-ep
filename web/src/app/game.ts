@@ -36,6 +36,10 @@ export interface SessionOptions {
   say?(json: string): void;
   /** free roam: front bumpers touching for 3 s, or parted, as JSON from the game (friends.ts) */
   bump?(json: string): void;
+  /** free roam: a drift battle's scoreboard, as JSON from the game ("{}": none; drift.ts) */
+  battle?(json: string): void;
+  /** co-op free roam: player 2 online, as JSON from the game ({"name"}; "{}": its endpoint ended; shell.ts coopMsg) */
+  coop?(json: string): void;
   /** free roam: a friend message from the server (friends.ts) */
   friend?(m: Record<string, unknown>): void;
   /** every frame drawn: quick chat's places over the cars in it (contract.ts RendererOptions.onMarks) */
@@ -65,6 +69,11 @@ export interface SessionOptions {
   onRemoved?(path: string): void;
   /** a save the game wrote as the browser deleted the save folder was not kept (process.ts onLost) */
   onLost?(path: string): void;
+  /** the browser would not open or make a file of the save folder (process.ts onSaveTrouble) */
+  onSaveTrouble?(error: string): void;
+  /** playing without saving: /save in the I/O worker's memory, with these files where the save folder has none
+   *  (proto.ts BootConfig saves, memFiles) */
+  memory?: { path: string; text: string; over?: boolean }[];
   /** tests: where frame dumps go, and their scale */
   artifacts?: string; dumpScale?: number;
   toggleFullscreen(): void;
@@ -100,12 +109,14 @@ export class GameSession {
     s.proc = await startProcess({
       module: o.module,
       initialPages: o.info.pages || undefined,
-      cfg: { args: ['nfsu2', '/data/SPEED2.EXE'], env: localGameFiles() ? { ...o.env, NFSU2_WINDOW_NATIVE: '1' } : o.env, dataBase: DATA_BASE, manifestUrl: MANIFEST_URL, saveDir: o.saveDir },
+      cfg: { args: ['nfsu2', '/data/SPEED2.EXE'], env: localGameFiles() ? { ...o.env, NFSU2_WINDOW_NATIVE: '1' } : o.env, dataBase: DATA_BASE, manifestUrl: MANIFEST_URL, saveDir: o.saveDir,
+        ...o.memory ? { saves: 'memory' as const, memFiles: o.memory } : {} },
       onLog: (line, fd, t) => o.log(`${tid(t, fd)} ${line}`),
       onSaved: o.onSaved,
       onSaveGone: o.onSaveGone,
       onRemoved: o.onRemoved,
       onLost: o.onLost,
+      onSaveTrouble: o.onSaveTrouble,
       onNote: o.log,
     });
     s.exited = s.proc.exited.then(code => { s.exitCode = code; s.detach(); return code; });
@@ -130,8 +141,17 @@ export class GameSession {
       try {
         return await attachRenderer(s.proc, o.canvas, {
           ...common, width: o.canvas.width, height: o.canvas.height, displayHz: o.displayHz, artifacts: o.artifacts, dumpScale: o.dumpScale,
-          // a frozen picture otherwise: the game stops and the page says why
-          onLost: () => { if (!s.detached) o.onFatal(N('the graphics stopped working'), 'GPU-LOST'); },
+          // a frozen picture otherwise: the game stops and the page says why.  Some Android phones' graphics drivers
+          // (Adreno 6xx, 2026-10/11) refuse the canvas's own picture at the first frame: Chrome asks the driver whether
+          // it may import it, the driver says the format is not supported, and Dawn takes that answer for an error
+          // ("vkGetPhysicalDeviceImageFormatProperties2 failed with VK_ERROR_FORMAT_NOT_SUPPORTED - While checking
+          // external image import support with TextureFormat::RGBA8Unorm ...").  Every Play ends the same way there,
+          // so the page says so instead of "press Play again".
+          onLost: why => {
+            if (s.detached) return;
+            if (/external image import support/i.test(why) && /Android/.test(navigator.userAgent)) o.onFatal(N('the graphics stopped working'), 'GPU-ANDROID-DRIVER');
+            else o.onFatal(N('the graphics stopped working'), 'GPU-LOST');
+          },
           onMarks: o.marks,
         });
       } catch (e) { if (e instanceof OtherBuild) other = e.message; throw e; }
@@ -152,7 +172,7 @@ export class GameSession {
     })).then(i => { s.input = i; });
     if (o.netName !== null)
       void attach('network', () => attachNet(s.proc, {
-        ...common, name: o.netName!, id: o.netId, was: o.netWas, claim: o.netClaim, block: o.netBlock, notice: o.notice, lobby: o.lobby, say: o.say, bump: o.bump, friend: o.friend, back: o.netBack, queue: o.netQueue, removed: o.netRemoved, races: o.netRaces, rename: o.netRename,
+        ...common, name: o.netName!, id: o.netId, was: o.netWas, claim: o.netClaim, block: o.netBlock, notice: o.notice, lobby: o.lobby, say: o.say, bump: o.bump, battle: o.battle, coop: o.coop, friend: o.friend, back: o.netBack, queue: o.netQueue, removed: o.netRemoved, races: o.netRaces, rename: o.netRename,
       })).then(n => { s.net = n; });
     return s;
   }

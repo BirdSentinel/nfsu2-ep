@@ -85,8 +85,10 @@ test('profileName: the checks of a profile from elsewhere, and why one is refuse
   const old = profile('Velkira', { version: 0x10C }); old[0xA16A] ^= 0x40;
   assert.match(P.profileName(old).bad, /another version/, 'another version stays out, edited or not');
   assert.match(P.profileName(profile('Velkira', { version: 0x10C })).bad, /another version/);
-  assert.match(P.profileName(profile('X', { inside: 'TOOLONGNAME' })).bad, /not one the game makes/);
-  assert.match(P.profileName(profile('X', { inside: 'a b' })).bad, /not one the game makes/);
+  assert.match(P.profileName(profile('X', { inside: 'SIXTEENLETTERSXX' })).bad, /not one the game makes/);
+  for (const inside of ['a  b', ' ab', 'ab ', 'a.b', 'Zoë', 'ab DVD 1'])
+    assert.match(P.profileName(profile('X', { inside })).bad, /not one the game makes/, inside);
+  assert.deepEqual(P.profileName(profile('X', { inside: 'Big Bad__Wolf-2' })), { name: 'Big Bad__Wolf-2', edited: false }, '15 with spaces');
   assert.match(P.profileName(profile('Velkira').subarray(0, 54000)).bad, /54000 bytes/);
 });
 
@@ -219,6 +221,13 @@ test('adding: a profile of the same name goes with its covers (in any case), all
   assert.deepEqual([...fs2.m.keys()], [at('MEH')]);
   assert.deepEqual([...fs2.m.get(at('MEH'))], [...meh]);
   assert.deepEqual(fs2.writes, [at('MEH'), `-${DIR}/MEH Magazine 2`]);
+
+  // ...and the old one's MPWINS.DAT goes with it (its career wins waiting for its garage are not the new one's); its
+  // GARAGE.DAT stays (its fingerprint keeps it aside for a profile of other cars)
+  const fs3 = folder({ [at('MEH')]: profile('MEH', { career: ['RX7'] }), [`${DIR}/MEH/MPWINS.DAT`]: 'N2MW', [`${DIR}/MEH/GARAGE.DAT`]: 'G' });
+  await addProfiles(fs3, await readBackup(meh, 'MEH'));
+  assert.deepEqual(sorted(fs3.m.keys()), sorted([at('MEH'), `${DIR}/MEH/GARAGE.DAT`]));
+  assert.deepEqual(fs3.writes, [at('MEH'), `-${DIR}/MEH/MPWINS.DAT`], 'the new profile is written before the old wins go');
 });
 
 // The game's new-profile box in Chinese starts with its text D6 8B 89 (LANGPACKS/chinese, 0x818F0385), the field

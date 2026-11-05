@@ -17,19 +17,34 @@ import { catalog, check, langFile, LANGUAGE_FILES } from '../tools/i18n-keys.mjs
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const { keys, bad } = catalog();
+// The desktop fork retains upstream translations (including its removed website's
+// credits), and adds Hungarian/English-only desktop controls. Other languages use
+// i18n.ts's English fallback for exactly these controls; upstream keys stay required.
+const desktopFallback = new Set([
+  'Delete archived save?', 'Permanently delete the archived save {name}?', 'No archived saves.',
+  'Created the 100% save for {name}.', 'Archive', 'Archive {name}', 'Unlock everything',
+  'Unlock cars, customization parts and events. Applies when you next start the game. Off restores normal unlock requirements; saved customizations remain.',
+  'Create a 100% save', 'Profile name', 'Create 100% save',
+  'Use 1–7 letters (A–Z) or digits. Creates a new profile from the included 100% save.',
+  'Archived saves', 'Archived saves stay on this device and do not appear in the game. Restore one to play it again.',
+]);
 
 test('the texts in use are literals the extraction reads', () => {
   assert.deepEqual(bad, []);
   assert.ok(keys.size > 500, `${keys.size} texts`);
-  assert.ok(keys.has('Fan project. Not affiliated with or endorsed by Electronic Arts.'), 'index.html data-i18n');
-  assert.ok(keys.has('Post the log in <0>#bug-reports on our Discord</0>, with what you were doing.'), 'index.html data-i18n-html');
+  assert.ok(keys.has('Create a 100% save'), 'index.html data-i18n');
+  assert.ok(keys.has('Screenshot with <0>F12</0>'), 'index.html data-i18n-html');
   assert.ok(keys.get('{n} laps')?.plural, 'tn()');
 });
 
 for (const lang of LANGUAGE_FILES) {
   test(`${lang}: every text, as the English has it`, () => {
     assert.ok(fs.existsSync(langFile(lang)), `web/src/app/lang/${lang}.json`);
-    assert.deepEqual(check(lang, keys), []);
+    assert.deepEqual(check(lang, keys).filter(problem => {
+      if (problem.startsWith('not in use: ')) return false;
+      if (lang !== 'hungarian' && problem.startsWith('missing: ') && desktopFallback.has(JSON.parse(problem.slice(9)))) return false;
+      return true;
+    }), []);
   });
 }
 

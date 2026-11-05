@@ -74,7 +74,7 @@ static int      g_detached;      /* the page never attached: dropped back to nul
                                                blocks from here */
 _Static_assert(GW_K_HL >= KZERO && GW_K_HL + GW_HL_BYTES <= KFIRST && GW_K_MARKS + GW_MARKS_BYTES <= KFIRST
                && GW_K_TONE + GW_TONE_BYTES <= KFIRST && GW_K_LAT + GW_LAT_BYTES <= KFIRST
-               && GW_K_PHOTO + GW_PHOTO_BYTES <= 1632u && 1632u + 400u <= KFIRST, "K arena including online skins");
+               && GW_K_PHOTO + GW_PHOTO_BYTES <= 1648u && 1648u + 400u <= KFIRST, "K arena including online skins");
 
 typedef struct {
     GwDraw  *d;  unsigned dn;
@@ -978,6 +978,9 @@ static void vsync_feed(void){
 void gw_headlights(const GwHL *blk){
     if (!g_on || !blk) return;
     Buf *B = &g_b[g_cur];
+    /* one view: the frame's one block, which every draw of the frame reads (as before split screen); in a split
+     * race each player's views keep the block made for them, a new one in the arena after it */
+    if (split_render_limit() <= 1){ memcpy(B->kb + GW_K_HL, blk, sizeof *blk); g_hloff = GW_K_HL; return; }
     if (!memcmp(B->kb + g_hloff, blk, sizeof *blk)) return;
     unsigned off = (B->kn + 255u) & ~255u;
     if (off + sizeof *blk > MAXKB){ g_ov_kb++; g_hloff = GW_K_HL; return; }
@@ -996,9 +999,18 @@ void gw_marks(const GwMark *m, int n){
 static GwTone g_tone = { GW_TONE_MAGIC, 1.f, 1.f, 1.f };
 void gw_tone(float mult, float white, float knee){ g_tone.mult = mult; g_tone.white = white; g_tone.knee = knee; }
 /* photo.c: photo mode's picture, for the next frame handed over; the back buffer's size (its frames' pixels) */
-static GwPhoto g_photo = { GW_PHOTO_MAGIC, GW_PHOTO_OFF, 0, 0, 0, 0, { 0, 0 } };
+static GwPhoto g_photo = { GW_PHOTO_MAGIC, GW_PHOTO_OFF, 0, 0, 0, 0, 0, 0, 0.f, 0, { 0, 0 } };
 void gw_photo(uint32_t state, uint32_t n, uint32_t target, uint32_t gen){
     g_photo.state = state; g_photo.n = n; g_photo.target = target; g_photo.gen = gen;
+}
+/* ...the tile drawn, what is being taken, the field of view and the lens (GwPhoto's tile, fov, lens) */
+void gw_photo_more(uint32_t tile, float fov, uint32_t lens){ g_photo.tile = tile; g_photo.fov = fov; g_photo.lens = lens; }
+/* the page's last picture asked for (its want, in either buffer's block: the same in both) */
+uint32_t gw_photo_want(void){
+    uint32_t w = 0;
+    for (int b = 0; b < 2 && !w; b++)
+        if (g_b[b].kb) w = __atomic_load_n((uint32_t *)(g_b[b].kb + GW_K_PHOTO + offsetof(GwPhoto, want)), __ATOMIC_ACQUIRE);
+    return w;
 }
 /* the frames of still picture gen the page has (its ack, in either buffer's block) */
 uint32_t gw_photo_got(uint32_t gen){
@@ -1028,10 +1040,12 @@ static void handoff(uint32_t rb_id, uint32_t rb_tex, uint32_t rb_dst, uint32_t r
     F->draws = (uint32_t)(uintptr_t)B->d; F->tv = (uint32_t)(uintptr_t)B->v; F->raw = (uint32_t)(uintptr_t)B->rv;
     F->k = (uint32_t)(uintptr_t)B->kb; F->psc = (uint32_t)(uintptr_t)B->psc;
     memcpy(B->kb + GW_K_TONE, &g_tone, sizeof g_tone);
-    memcpy(B->kb + GW_K_PHOTO, &g_photo, offsetof(GwPhoto, ack));       /* (ack is the page's) */
+    memcpy(B->kb + GW_K_PHOTO, &g_photo, offsetof(GwPhoto, ack));       /* (ack and want are the page's) */
+    memcpy(B->kb + GW_K_PHOTO + offsetof(GwPhoto, tile), &g_photo.tile, sizeof g_photo.tile);
+    memcpy(B->kb + GW_K_PHOTO + offsetof(GwPhoto, fov), &g_photo.fov, GW_PHOTO_BYTES - offsetof(GwPhoto, fov));
     /* Online skins: magic, count, then 49 {GPU texture id, owner VIP} pairs.
      * VIP 0 is our own car. This optional block occupies the arena's spare tail. */
-    { extern void roam_game_skin_map(uint32_t *); roam_game_skin_map((uint32_t *)(B->kb + 1632)); }
+    { extern void roam_game_skin_map(uint32_t *); roam_game_skin_map((uint32_t *)(B->kb + 1648)); }
     { GwLat *L = (GwLat *)(B->kb + GW_K_LAT);
       L->magic = GW_LAT_MAGIC; L->input_ms = hfr_frame_input_ms(); L->handoff_ms = now_ms(); }
     F->rq_end = (uint32_t)g_ctl->rq_head;

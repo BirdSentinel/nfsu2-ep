@@ -1,4 +1,4 @@
-import type { GameProcess } from '../host/process';
+import type { NetProcess } from './index';
 
 // The authenticated LAN connection owns uploads. Artwork is never written into
 // another driver's game directory and never keyed only by car/vinyl name.
@@ -14,6 +14,7 @@ export class SkinSync {
   ready = false;
   reset() { this.generation++; this.digest = ''; this.remote.clear(); this.ready = false; }
   receive(m: any) {
+    if (m.t === 'skin-reset') { this.reset(); return; }
     if (m.t === 'skin-ready') { this.ready = true; return; }
     if (m.t === 'skin-saved') { if (typeof m.digest === 'string') this.digest = m.digest; return; }
     if (m.t !== 'skin' || !Number.isInteger(m.vip) || !this.wanted.has(m.vip)) return;
@@ -47,8 +48,8 @@ export class SkinSync {
     } finally { this.busy = false; }
   }
 }
-const states = new WeakMap<GameProcess, SkinSync>();
-export function skinsFor(proc: GameProcess): SkinSync {
+const states = new WeakMap<NetProcess, SkinSync>();
+export function skinsFor(proc: NetProcess): SkinSync {
   let state = states.get(proc);
   if (!state) { state = new SkinSync(); states.set(proc, state); }
   return state;

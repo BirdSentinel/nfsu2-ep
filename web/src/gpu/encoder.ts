@@ -26,7 +26,7 @@ import { D, F, Kind, Op } from './proto';
 import { COPY, FF_FS, TONE, TVERT_VS } from './wgsl';
 import { createShaderAbi, alphaFunc, PSCUBE, VSPAR_SIZE, KWIN_SIZE, PSPAR_SIZE, HLPAR_SIZE } from './shader-abi';
 import { unpackDxt } from './dxt';
-import { drawViewport, drawScissor, type Viewport } from './viewport';
+import { drawViewport, drawScissor } from './viewport';
 import { dxt1HasPunch, dxt1ToAstc } from './astc';
 
 export interface EncodeStats {
@@ -146,6 +146,10 @@ export class Encoder {
   traceSeq = new Set<number>(); traceDumps = false; logShaders = false;
   /** diagnostics: log every create / upload / free of these texture ids */
   watchTex = new Set<number>();
+  /** pixelated textures (the page's pixelated_textures, NFSU2_PIXELATED_TEXTURES): the game's own textures sampled
+   *  nearest, their mip levels too, as dgVoodoo's "Point sampled", whatever filter the game asks for; its render
+   *  targets (the screen copies of the post passes, reflections, the mirror) stay as it sets them */
+  pointTex = false;
   private tr: string[] | null = null;
 
   // stats
@@ -164,7 +168,7 @@ export class Encoder {
   private seenFmt = new Set<string>();
 
   constructor(device: GPUDevice, memory: WebAssembly.Memory, ctlPtr: number, log: (s: string) => void) {
-    this.device = device; this.queue = device.queue; this.memory = memory; this.ctlW = ctlPtr >> 2; this.log = log;
+    this.device = device; this.queue = device.queue; this.memory = memory; this.ctlW = ctlPtr >>> 2; this.log = log;
     const f = device.features;
     this.feat = { bc: f.has('texture-compression-bc'), astc: f.has('texture-compression-astc'), swizzle: f.has('texture-component-swizzle'),
       unaligned: f.has('texture-compression-unaligned' as GPUFeatureName) };
@@ -198,7 +202,9 @@ export class Encoder {
     return m;
   }
 
-  /** (re)create the typed views when the wasm memory grew */
+  /** (re)create the typed views when the wasm memory grew.  The queue's writes take a subarray of just their bytes,
+   *  never u8 with an offset: Firefox's WebGPU refuses a view of 2 GB or more (a computer's memory with the guest
+   *  heap's window, host/memory.ts) */
   views(): void {
     const b = this.memory.buffer as unknown as SharedArrayBuffer;
     if (b === this.sab) return;
@@ -223,7 +229,7 @@ export class Encoder {
     let tail = u32[c + P.C.rqTail];
     let n = 0;
     while (((limit - tail) | 0) > 0) {
-      const p = base + (tail & (cap - 1)), w = p >> 2;
+      const p = base + (tail & (cap - 1)), w = p >>> 2;
       const op = u32[w], len = u32[w + 1];
       if (len < 16 || len > cap) { this.log(`[gpu] corrupt resource queue record op=${op} len=${len} at ${tail}`); tail = limit; break; }
       const a0 = u32[w + 2], a1 = u32[w + 3], a2 = u32[w + 4], a3 = u32[w + 5], a4 = u32[w + 6], a5 = u32[w + 7];
@@ -239,7 +245,7 @@ export class Encoder {
           } break;
         case Op.TexFree: if (this.watchTex.has(a0)) this.log(`[watch] tex ${a0} free`); this.texFree(a0); break;
         case Op.PoolGrow: this.poolGrow(a0); break;
-        case Op.PoolWrite: if (this.pool && a0 + a1 <= this.pool.size) this.queue.writeBuffer(this.pool, a0, this.u8, data, a1); break;
+        case Op.PoolWrite: if (this.pool && a0 + a1 <= this.pool.size) this.queue.writeBuffer(this.pool, a0, this.u8.subarray(data, data + a1)); break;
         case Op.ShaderVs: case Op.ShaderPs: {
           const text = new TextDecoder().decode(this.u8.slice(data, data + Math.max(0, a1 - 1)));
           const mod = this.module(`${op === Op.ShaderVs ? 'vs' : 'ps'}_${a0}`, text);
@@ -365,7 +371,7 @@ export class Encoder {
       this.queue.writeTexture(dst, unpackDxt(t.fmt, this.u8, data, pitch, lw, lh, this.unpackBuf), { bytesPerRow: lw * 4, rowsPerImage: lh }, [lw, lh, 1]);
       return;
     }
-    this.queue.writeTexture(dst, this.u8, { offset: data, bytesPerRow: pitch, rowsPerImage: rows }, [w, h, 1]);
+    this.queue.writeTexture(dst, this.u8.subarray(data, data + pitch * rows), { bytesPerRow: pitch, rowsPerImage: rows }, [w, h, 1]);
   }
 
   private poolGrow(size: number): void {
@@ -387,6 +393,13 @@ export class Encoder {
     this.destroyLater.push(b);
     this.bufGen++;
     return this.device.createBuffer({ label, size, usage });
+  }
+
+  /** pointTex: a sampler key with nearest min, mag and mip filters (so no anisotropy) for one of the game's own
+   *  textures; a mip filter of none (the top level only) stays */
+  private pointKey(k: number, t: Tex): number {
+    if (t.rt) return k;
+    return (k & ~0x3f) | 1 | 1 << 2 | ((k >> 4) & 3 ? 1 << 4 : 0);
   }
 
   private sampler(k: number): GPUSampler {
@@ -629,7 +642,7 @@ export class Encoder {
     const u32 = this.u32, i32 = this.i32, f32 = this.f32, dev = this.device;
     const fw = this.ctlW + P.C.frame + b * (P.FRAME_BYTES >> 2);
     const dn = u32[fw + F.dn], vn = u32[fw + F.vn], rvn = u32[fw + F.rvn], kn = u32[fw + F.kn];
-    const drawsW = u32[fw + F.draws] >> 2, pscW = u32[fw + F.psc] >> 2;
+    const drawsW = u32[fw + F.draws] >>> 2, pscW = u32[fw + F.psc] >>> 2;
     const bbW = u32[fw + F.bbW] || 1280, bbH = u32[fw + F.bbH] || 720;
     let isDirect = !!direct && direct.width === bbW && direct.height === bbH;
     if (isDirect && this.readsScreenFirst(drawsW, dn)) {
@@ -648,9 +661,9 @@ export class Encoder {
 
     // arenas: one writeBuffer each, in the queue before this frame's submit
     const SV = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST, UV = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
-    if (vn) { this.tvBuf = this.grow(this.tvBuf, vn * P.TVERT_BYTES, 'tvert', SV); this.queue.writeBuffer(this.tvBuf, 0, this.u8, u32[fw + F.tv], vn * P.TVERT_BYTES); }
-    if (rvn) { const n = (rvn + 3) & ~3; this.rawBuf = this.grow(this.rawBuf, n, 'raw', SV); this.queue.writeBuffer(this.rawBuf, 0, this.u8, u32[fw + F.raw], n); }
-    if (kn) { const n = (kn + 3) & ~3; this.kBuf = this.grow(this.kBuf, n + KWIN_SIZE, 'vsconst', UV); this.queue.writeBuffer(this.kBuf, 0, this.u8, u32[fw + F.k], n); }
+    if (vn) { this.tvBuf = this.grow(this.tvBuf, vn * P.TVERT_BYTES, 'tvert', SV); this.queue.writeBuffer(this.tvBuf, 0, this.u8.subarray(u32[fw + F.tv], u32[fw + F.tv] + vn * P.TVERT_BYTES)); }
+    if (rvn) { const n = (rvn + 3) & ~3; this.rawBuf = this.grow(this.rawBuf, n, 'raw', SV); this.queue.writeBuffer(this.rawBuf, 0, this.u8.subarray(u32[fw + F.raw], u32[fw + F.raw] + n)); }
+    if (kn) { const n = (kn + 3) & ~3; this.kBuf = this.grow(this.kBuf, n + KWIN_SIZE, 'vsconst', UV); this.queue.writeBuffer(this.kBuf, 0, this.u8.subarray(u32[fw + F.k], u32[fw + F.k] + n)); }
     this.pBuf = this.grow(this.pBuf, (dn + 1) * PSLOT, 'pspar', UV);
     if (this.pStage.length < (dn + 1) * (PSLOT / 4)) this.pStage = new Float32Array((dn + 64) * (PSLOT / 4));
     const ps = this.pStage;
@@ -663,9 +676,12 @@ export class Encoder {
     const touched = new Set<number>();
     let clearArgb = u32[fw + F.clearArgb];
     let cPipe: GPURenderPipeline | null = null, cSrc = -1, cK = -1, cP = -1, cBcol = -1, cIx = '';
-    // the pass's size, and the scissor in effect in it (a GwDraw.clip value; 0 = the whole target)
-    let passW = 0, passH = 0, cH = -1;
-    let currentViewport: Viewport | null = null;
+    // the pass's size, the scissor in effect in it (a GwDraw.clip value; 0 = the whole target), whether a split
+    // screen's cells came in it (passCells: viewports and scissors then by viewport.ts), the headlights block bound
+    let passW = 0, passH = 0, cClip = 0, passCells = false, cH = -1;
+    // the viewport and scissor in effect in the pass (when it opens WebGPU's: the whole target), and the draw's
+    // (viewport.ts fills them in place, so a draw allocates nothing and sets either only when it changes)
+    const vpNow = [0, 0, 0, 0, 0, 1], vpDraw = [0, 0, 0, 0, 0, 1], scNow = [0, 0, 0, 0], scDraw = [0, 0, 0, 0];
     // the previous draw's pipeline (pipelines outlive passes, so this survives a pass change)
     let lastKey = -1, lastPipe: GPURenderPipeline | null | undefined;
     const b1 = this.b1, dyn = this.dyn;
@@ -683,7 +699,8 @@ export class Encoder {
         w = t.w; h = t.h; key = (target & 0xFFFF) * 8 + face; passCube = target & 0xFFFF;
       }
       passW = w; passH = h;
-      currentViewport = null;
+      vpNow[0] = 0; vpNow[1] = 0; vpNow[2] = w; vpNow[3] = h; vpNow[4] = 0; vpNow[5] = 1;
+      scNow[0] = 0; scNow[1] = 0; scNow[2] = w; scNow[3] = h; cClip = 0; passCells = false;
       passKey = target ? (target & 0xFFFF) : -1;
       const first = key === -1 ? !screenTouched : !touched.has(key);
       let zv: GPUTextureView | undefined, zclear = false, zval = 1;
@@ -745,7 +762,7 @@ export class Encoder {
       if (kind === Kind.Clear && f32[w + D.viewport + 2] > 0) {
         endPass(); curT = target; curZ = zid;
         pass = openPass(target, zid);
-        const vp = drawViewport(f32, w + D.viewport, passW, passH);
+        const vp = drawViewport(f32, w + D.viewport, passW, passH, vpDraw);
         const z = f32[w + D.clrZ], flags = u32[w + D.clrFlags];
         if (pass && vp && Number.isFinite(z) && (flags & 3)) {
           pass.setViewport(vp[0], vp[1], vp[2], vp[3], 0, 1);
@@ -775,11 +792,17 @@ export class Encoder {
       const count = u32[w + D.count];
       if (!pass || !count) { if (tr) tr.push(`  #${i} draw skipped: ${pass ? 'no vertices' : 'no pass (target missing)'}`); skipped++; continue; }
       const p: GPURenderPassEncoder = pass;
-      const viewport = drawViewport(f32, w + D.viewport, passW, passH);
-      if (!viewport) { skipped++; continue; }
-      if (!currentViewport || viewport.some((v, i) => v !== currentViewport![i])) {
-        p.setViewport(...viewport);
-        currentViewport = viewport;
+      // a split screen's cell or effect region (GwDraw.viewport, clrFlags): from then on in this pass every draw
+      // takes the general way; until then (and in any frame of one view) the whole target, as before split screen
+      const cell = f32[w + D.viewport + 2] !== 0 || u32[w + D.clrFlags] !== 0;
+      if (cell) passCells = true;
+      if (passCells) {
+        if (!drawViewport(f32, w + D.viewport, passW, passH, vpDraw)) { skipped++; continue; }
+        if (vpDraw[0] !== vpNow[0] || vpDraw[1] !== vpNow[1] || vpDraw[2] !== vpNow[2] || vpDraw[3] !== vpNow[3]
+            || vpDraw[4] !== vpNow[4] || vpDraw[5] !== vpNow[5]) {
+          p.setViewport(vpDraw[0], vpDraw[1], vpDraw[2], vpDraw[3], vpDraw[4], vpDraw[5]);
+          for (let q = 0; q < 6; q++) vpNow[q] = vpDraw[q];
+        }
       }
 
       // pipeline
@@ -801,10 +824,20 @@ export class Encoder {
       // the 2D UI on a screen narrower than 4:3 stays in its 4:3 band (gpu_proto.h GwDraw.clip), on the
       // back buffer or a target of its size
       const clip = passW === bbW && passH === bbH ? u32[w + D.clip] : 0;
-      // A viewport transforms coordinates; explicitly restrict rasterization
-      // too. Screen-space quads and light sprites must stay in their cell.
-      const fx0 = u32[w + D.clrArgb], fx1 = u32[w + D.clrFlags];
-      p.setScissorRect(...drawScissor(viewport, passW, passH, clip, fx0, fx1));
+      if (passCells) {
+        // A viewport transforms coordinates; explicitly restrict rasterization
+        // too. Screen-space quads and light sprites must stay in their cell.
+        drawScissor(vpDraw, passW, passH, clip, u32[w + D.clrArgb], u32[w + D.clrFlags], scDraw);
+        if (scDraw[0] !== scNow[0] || scDraw[1] !== scNow[1] || scDraw[2] !== scNow[2] || scDraw[3] !== scNow[3]) {
+          p.setScissorRect(scDraw[0], scDraw[1], scDraw[2], scDraw[3]);
+          for (let q = 0; q < 4; q++) scNow[q] = scDraw[q];
+        }
+      } else if (clip !== cClip) {
+        const y0 = Math.min(clip & 0xFFFF, passH), y1 = Math.min(clip >>> 16, passH);
+        scNow[0] = 0; scNow[1] = clip ? y0 : 0; scNow[2] = passW; scNow[3] = clip ? Math.max(0, y1 - y0) : passH;
+        p.setScissorRect(scNow[0], scNow[1], scNow[2], scNow[3]);
+        cClip = clip;
+      }
 
       // PS parameters: a new slot only when they differ from the previous draw's
       const psci = u32[w + D.psci];
@@ -839,8 +872,9 @@ export class Encoder {
       // group 1: textures and samplers (a texture bound as this pass's target samples white)
       const cube = psEff >= PSCUBE;
       const t1 = u32[w + D.tex1], t2 = u32[w + D.tex2], t3 = u32[w + D.tex3];
-      const s0 = u32[w + D.smp], s1 = u32[w + D.smp + 1], s2 = u32[w + D.smp + 2], s3 = u32[w + D.smp + 3];
+      let s0 = u32[w + D.smp], s1 = u32[w + D.smp + 1], s2 = u32[w + D.smp + 2], s3 = u32[w + D.smp + 3];
       const v0 = this.texFor(t0, cube, passCube), v1 = this.texFor(t1, false, passCube), v2 = this.texFor(t2, false, passCube), v3 = this.texFor(t3, false, passCube);
+      if (this.pointTex) { s0 = this.pointKey(s0, v0); s1 = this.pointKey(s1, v1); s2 = this.pointKey(s2, v2); s3 = this.pointKey(s3, v3); }
       // the same textures and samplers as the previous draw (the common case): nothing to do
       if (b1[0] !== (cube ? 1 : 0) || b1[1] !== v0.serial || b1[2] !== v1.serial || b1[3] !== v2.serial || b1[4] !== v3.serial
           || b1[5] !== s0 || b1[6] !== s1 || b1[7] !== s2 || b1[8] !== s3) {
@@ -872,7 +906,7 @@ export class Encoder {
     endPass();
     if (tr) {
       // the first vertices of every TVert draw: clip position, oD0, oT0
-      const tv = u32[fw + F.tv] >> 2;
+      const tv = u32[fw + F.tv] >>> 2;
       for (let i = 0; i < dn; i++) {
         const w = drawsW + i * P.DRAW_WORDS;
         if (u32[w + D.kind] !== Kind.Draw || i32[w + D.vsid] > 0) continue;
@@ -887,12 +921,12 @@ export class Encoder {
       for (let i = 0; i < dn; i++) {
         const w = drawsW + i * P.DRAW_WORDS;
         if (u32[w + D.kind] !== Kind.Draw || i32[w + D.vsid] <= 0 || u32[w + D.ixIsz]) continue;
-        const a = (raw + u32[w + D.rawoff]) >> 2, k = (kb + u32[w + D.koff]) >> 2;
+        const a = (raw + u32[w + D.rawoff]) >>> 2, k = (kb + u32[w + D.koff]) >>> 2;
         const hex = [...u32.subarray(a, a + 8)].map(x => x.toString(16).padStart(8, '0')).join(' ');
         const flt = [...f32.subarray(a, a + 3)].map(x => x.toPrecision(5)).join(' ');
         const kc = [...f32.subarray(k + 4, k + 4 + 20)].map(x => x.toPrecision(4)).join(' ');
         tr.push(`  raw #${i}: v0 ${hex} (xyz ${flt}) K stride ${u32[k]} tsel ${u32[k + 1].toString(16)} base ${u32[k + 2]} c0-4 ${kc}`);
-        const st = u32[k] >> 2, n = Math.min(u32[w + D.count], 6);
+        const st = u32[k] >>> 2, n = Math.min(u32[w + D.count], 6);
         if (st) for (let v = 1; v < n; v++) tr.push(`  raw #${i}.${v}: xyz ${[...f32.subarray(a + v * st, a + v * st + 3)].map(x => x.toPrecision(6)).join(' ')} word3 ${u32[a + v * st + 3].toString(16)}`);
       }
       // per vertex shader, the first draw's constants c0..c15 (matrices)
@@ -901,7 +935,7 @@ export class Encoder {
         const w = drawsW + i * P.DRAW_WORDS, vs = i32[w + D.vsid];
         if (u32[w + D.kind] !== Kind.Draw || vs <= 0 || seenVs.has(vs)) continue;
         seenVs.add(vs);
-        const k = (kb + u32[w + D.koff]) >> 2, nk = (u32[w + D.ksz] - 16) >> 4;
+        const k = (kb + u32[w + D.koff]) >>> 2, nk = (u32[w + D.ksz] - 16) >> 4;
         const rows: string[] = [];
         for (let r = 0; r < Math.min(nk, 16); r++) rows.push(`c${r}(${[...f32.subarray(k + 4 + r * 4, k + 8 + r * 4)].map(x => x.toPrecision(4)).join(' ')})`);
         tr.push(`  consts vs ${vs} (#${i}, ${nk} rows): ${rows.join(' ')}`);

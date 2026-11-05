@@ -1,0 +1,53 @@
+Egyuttparkolas upstream integration — 2026-11-05
+
+Source: https://github.com/th0mk/nfsu2-web
+Upstream snapshot: a434962a42925d1fa06225d1611298263caeb3e0
+Local starting point: 3bce0f3a (mx5 and golf fixes)
+Common ancestor: e0c1cc37
+278 upstream commits, all within the requested preceding 72 hours.
+Integration branch: codex/upstream-2026-11-05
+
+Included: network worker, race state ownership checks, free-roam synchronization
+and loading fixes, guest-memory fixes, split-screen/co-op improvements, controller
+and keyboard changes, photo mode additions, modifiers and upstream UI fixes.
+
+Preserved: MX5NA and GOLF modifications, addon-car tables, custom PNG vinyls and
+their authenticated sharing, blue UI and yellow specialty-shop markers, branding,
+native window sizing, save archives, complete-save creation and unlock setting.
+The standalone server remains one shared session with at most 49 players.
+The upstream website's title advertisement and screenshot watermark stay removed.
+
+Integration-specific repairs:
+- Bridge artwork messages between the renderer and the new network worker.
+- Move the 400-byte artwork ownership table to 1648..2048, after the expanded
+  48-byte photo block; bound its entries despite upstream's larger car-slot pool.
+- Preserve SDATA alongside upstream's new vinylpacks in file inventories.
+- Keep local car-count relocation hooks with the updated split-screen code.
+- Combine desktop save/archive controls with upstream save handling.
+- Adapt translation checks to retained upstream catalogs and the existing
+  English fallback for Hungarian-specific desktop controls.
+- Explicitly dereference string choices in upstream Rust test helpers for the
+  installed compiler's type inference.
+
+Validation:
+- TypeScript check and frontend production build passed.
+- Web fast suite: 543 passed, 0 failed, 15 platform/optional skips.
+- Rust LAN/roam/online/standalone tests: 397 passed, 0 failed.
+- Desktop suite: 8 passed, including two-client packet and custom-PNG exchange.
+- Packaged Linux binary: same two-client packet/PNG exchange passed.
+- Native race state ownership/interpolation and specialty-map color tests passed.
+- WASM runtime rebuilt; launcher boot and MX5NA quick-race driving passed in
+  headless Edge, with 0 renderer errors in the smoke run.
+  The MX5NA script uses normal unlock settings; unlocking all cars changes the
+  carousel order and therefore is not compatible with its fixed key sequence.
+
+Server delivery:
+- out/portable/Egyuttparkolas-Server-Windows.zip
+- out/portable/Egyuttparkolas-Server-Linux.tar.gz
+No remote deployment: the owner installs the server package manually.
+Update the server and clients together. For Linux extract over the existing
+package and run sudo bash start.sh; preserve data/ (configuration and state).
+For Windows stop the server, replace the executable, preserve server.json and
+state/, then start it again. Package builds do not contain player state.
+
+Detailed build/test logs and smoke screenshots: out/upstream-*.

@@ -3,10 +3,12 @@
 *
 !app/registry-defaults.txt
 !CHANGELOG.md
+!runtime/flags.dat
 !web/package.json
 !web/package-lock.json
 !web/build.mjs
 !web/index.html
+!web/tools/i18n-keys.mjs
 !web/src/
 !web/server-rs/
 web/server-rs/target/

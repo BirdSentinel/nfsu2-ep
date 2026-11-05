@@ -660,6 +660,7 @@ dependencies = [
  "futures-util",
  "hmac",
  "libc",
+ "md-5",
  "mimalloc",
  "nfsu2-bans",
  "nfsu2-claims",

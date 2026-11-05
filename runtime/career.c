@@ -60,6 +60,9 @@
  *                              adds a won record of stage 5's final event
  *   watchw X                   debug: log the guest functions that write X
  *   bot on|off                 the career bot below (also NFSU2_CAREER_BOT=1)
+ *   mpcredit NAME[,NAME] [MARGIN]  the wins of those races at the next crib, as
+ *                              multiplayer race's (mpcredit.c; MARGIN as the
+ *                              game measures it, 100 by default, -1 a friend's)
  * X/ARG/FN are expressions: numbers, "*X" (guest dword at X), "(X)", "+", "-",
  * and "*" between two operands (multiply), e.g. "*(*0x890118+0xbd0)".
  */
@@ -140,6 +143,7 @@ void autotest_tap(unsigned dik, long frames);
 #define G_NOTHERS        0x00838420u
 
 /* ---- expressions ---------------------------------------------------------- */
+uint32_t split_guest_addr(uint32_t a);   /* splitscreen.c: a script's 0x8900AC.. where this build keeps it */
 static const char *xp;
 static uint32_t x_expr(void);
 static void x_ws(void){ while (*xp == ' ' || *xp == '\t') xp++; }
@@ -148,7 +152,7 @@ static uint32_t x_unary(void){
     if (*xp == '*'){ xp++; uint32_t a = x_unary();
         return mem_is_committed(a) && mem_is_committed(a + 3) ? MR32(a) : 0u; }
     if (*xp == '('){ xp++; uint32_t v = x_expr(); x_ws(); if (*xp == ')') xp++; return v; }
-    char *end; uint32_t v = (uint32_t)strtoul(xp, &end, 0); xp = end; return v;
+    char *end; uint32_t v = split_guest_addr((uint32_t)strtoul(xp, &end, 0)); xp = end; return v;
 }
 static uint32_t x_term(void){        /* '*' after an operand multiplies */
     uint32_t v = x_unary();
@@ -621,6 +625,7 @@ static int bot_jump(uint32_t m, const char *what){
  * (msg hash, and the focused object's hash for button presses 0x0C407210) */
 void sub_00498f00(CPU *c);   /* EngageEventDialogFNGObject::MessageHandler */
 void sub_00499c00(CPU *c);   /* EngageRaceDialogFNGObject::MessageHandler */
+__attribute__((weak)) int roam_game_card_question(void);   /* roam_game.c (free roam's race lobbies) */
 void dispatch_patch(uint32_t a, void (*f)(CPU *));
 static void trace_msg(CPU *c, const char *who){
     uint32_t m = MR32(c->esp + 4u), o = MR32(c->esp + 8u);
@@ -913,6 +918,9 @@ static void bot_tick(void){
     }
     /* overlays first: dialogs, and MC_Main.fng = the memory-card prompts
      * ("save the profile?", "Save complete.", "Load complete.") */
+    /* (free roam with others: the race card's Solo or Multiplayer question opens with Solo focused, on the right, so
+     * Left would race it with others: Enter alone takes Solo, the career's race; roam_game.c, none without it) */
+    if (roam_game_card_question && roam_game_card_question()){ bot_keys("R"); B.next = f + 30; return; }
     if (fe_each(fe_dialog, 0)){ bot_keys("LR"); B.next = f + 30; return; }
     if (career_fe_active("MC_Main.fng")){ bot_keys(B.save ? "LR" : "R"); B.next = f + 60; return; }
     if (!strcasecmp(top, "UI_EngageRaceDialog.fng") || !strcasecmp(top, "UI_EngageEventDialog.fng")){
@@ -1049,10 +1057,16 @@ static void run_job(CPU *c, const char *line){
 }
 
 /* Main-loop hook.  sub_004022c0 is an empty function with ~300 callers; only
- * the call from GameLoop (return address 0x581475) does work. */
+ * GameLoop's do work: the call returning to 0x581475 (before the camera's
+ * and the sound's update), and the first after the frame's Present
+ * (0x5D2850), which gives back the camera the right stick's look turned for
+ * the frame drawn (look.c). */
+#define LOOK_END_RET     0x005814e0u
+void look_frame_end(void);
 void sub_004022c0_orig(CPU *c);
 void sub_004022c0(CPU *c){
-    if (MR32(c->esp) == MAINLOOP_RET){
+    if (MR32(c->esp) == LOOK_END_RET) look_frame_end();
+    else if (MR32(c->esp) == MAINLOOP_RET){
         if (!g_hooked) bot_init();
         g_hooked = 1;
         while (g_qh != g_qt){ Job *j = &g_q[g_qh]; g_qh = (g_qh + 1) % QMAX; run_job(c, j->line); }
@@ -1072,7 +1086,7 @@ static void queue(const char *line){
 int career_is_cmd(const char *cmd){
     static const char *const k[] = { "call", "memdump", "waitx", "teleport", "autopilot", "racewin",
                                      "careerlist", "careergo", "shopgo", "peekx", "fnglist", "bot", "waitfe", "tapfe", "waitroam", "showgo", "cargo", "watchw",
-                                     "outrun", "outrunwin", "visual", "uniques", 0 };
+                                     "outrun", "outrunwin", "visual", "uniques", "mpcredit", "walls", 0 };
     for (int i = 0; k[i]; i++) if (!strcasecmp(cmd, k[i])) return 1;
     return 0;
 }
@@ -1216,6 +1230,8 @@ int career_cmd(CPU *c, const char *line, long *wait_start){
     if (!strcasecmp(cmd, "fnglist")){
         fprintf(stderr, "[career] f=%ld fe packages:", f); fe_each(fe_print, a1[0] ? (void *)1 : 0); fputc('\n', stderr); return 1; }
     if (!strcasecmp(cmd, "careergo")){ career_go(a1); return 1; }
+    if (!strcasecmp(cmd, "walls")){ int walls_cmd(const char *); return walls_cmd(rest); }
+    if (!strcasecmp(cmd, "mpcredit")){ int mpcredit_test(const char *, float); mpcredit_test(a1, a2[0] ? (float)atof(a2) : 100.f); return 1; }
     if (!strcasecmp(cmd, "shopgo")){
         uint32_t sh = shop_by_name(a1);
         char what[64]; snprintf(what, sizeof what, "shopgo %s", a1);

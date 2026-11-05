@@ -7,6 +7,7 @@
  *   2) visited set: each node at most once per top-level walk
  * That way the walk terminates and the game can make progress.            */
 #include "cpu.h"
+#include "guest_span.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -29,10 +30,16 @@ static CPU *g_guard_cpu = 0;
 #define HEAP_HI 0x2F000000u
 #endif
 
-/* Find the heap block that contains a guest address (header: +0 size, +4 signature) */
+/* Find the heap block that contains a guest address (header: +0 size, +4 signature); on wasm also in the guest
+ * heap's window above the runtime (guest_span.h), whose blocks start in it */
 static int block_of(uint32_t addr, uint32_t *ubeg, uint32_t *uend){
+    uint32_t lo = HEAP_LO;
+#ifdef __wasm__
+    if (g_gwin_hi && addr >= g_gwin_lo && addr < g_gwin_hi) lo = g_gwin_lo;
+    else
+#endif
     if (addr < HEAP_LO || addr >= HEAP_HI) return 0;
-    for (uint32_t p = (addr & ~15u); p >= HEAP_LO; p -= 16u){
+    for (uint32_t p = (addr & ~15u); p >= lo; p -= 16u){
         if (!mem_is_committed(p+4)) return 0;
         if (MR32(p+4) == 0xA110C8EDu){
             uint32_t sz = MR32(p), beg = p + 16u, end = beg + sz;
@@ -434,18 +441,87 @@ static int force_rain(void){
     if (fr < 0){ const char *e = getenv("FORCERAIN"); fr = e ? atoi(e) : 0; }
     return fr;
 }
+/* --- One weather for everyone in free roam --------------------------------
+ * sub_0061e380(x, y) is the rain at a place: the "Rain" zone's rain there
+ * (its param 0) when v = |0.5 cos(t + x/50) + 0.5| <= the zone's threshold
+ * (param 1), else 0 (sub_006134e0: t the world timer 0x7fb718 in s, the
+ * angle in degrees), so the rain comes and goes in a 6-minute cycle, shifted
+ * by 1 s for every 50 m along x (measured at the prologue's spot: rain 0.75
+ * below v ~0.05, about 52 s of every 6 minutes, from 2:00 after a load on
+ * the game's clock).  Rain::Update takes it at the camera (the drops, the
+ * fog, the sound), and the car physics at each car (sub_005a4d80 and
+ * sub_005aad90 through 0x5ed5d0): a grip x (1 - 0.025 x rain), as the game's
+ * weather tip says.  The world timer starts at 1 s with each World
+ * (0x5ff490 -> 0x576cf0), so in free roam each player had their own weather,
+ * and their own grip at the same place.  Network races need nothing: every
+ * client's world timer follows the race host's (0x601a60).
+ * In free roam's world with free-roam multiplayer on, t is the device's UTC
+ * time mod 360 s instead, the same for everyone whose clock is right (a
+ * clock some seconds off only moves the rain's start and end as much).  The
+ * formula and the zones stay the game's, so it rains as often and as long
+ * as before; only where in the cycle a world starts changes (the game's own
+ * clock started each load at the same point).  Solo, races, the Dyno Shop
+ * and LAN keep the game's clock. */
+int roam_game_shared_weather(void);       /* roam_game.c: free roam's world with free-roam multiplayer on */
+#define A_WORLD_T   0x007fb718u           /* WorldTimer in seconds (float) */
+#define A_TICKS     0x0086518cu           /* WorldTimer in ticks: a new value each world step */
+static float shared_weather_t(void){
+    static uint32_t at = ~0u; static float t;
+    uint32_t tick = MR32(A_TICKS);
+    if (tick != at){                      /* the clock once a step: the car physics asks once per car */
+        struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+        t = (float)((double)(ts.tv_sec % 360) + (double)ts.tv_nsec * 1e-9);
+        at = tick;
+    }
+    return t;
+}
 void sub_0061e380_orig(CPU *c);
 void sub_0061e380(CPU *c){
-    sub_0061e380_orig(c);
+    if (roam_game_shared_weather()){
+        float own = MRF32(A_WORLD_T);
+        MRF32(A_WORLD_T) = shared_weather_t();
+        sub_0061e380_orig(c);
+        MRF32(A_WORLD_T) = own;
+    } else sub_0061e380_orig(c);
     int fr = force_rain();
     if (fr == 1 || fr == 4) ST(0) = 1.0; else if (fr == 2 || fr == 3) ST(0) = 0.0;
 }
 void hfr_rain_update(CPU *c);          /* framerate.c: sub_0061f120_orig at any frame rate */
+/* photo mode's Weather (photo.c): -1 as the game has it, 0 dry, 1 rain; and whether its world stands.  Forced, the rain
+ * is what the photo asks at once (its strength +0x1F0 too, which only eases while the world runs).  In a world that
+ * stands the update would do nothing (a world step of 0 is under its gate), so it runs on a step so short that the
+ * drops hang where they are (framerate.c scales their moves by it) but the rain's look is made; and the first frames
+ * after rain is asked, on a 60 fps step each, so that there are drops to hang. */
+void sub_0061f120_orig(CPU *c);
+int photo_weather(void);
+int photo_stands(void);
+#define A_WORLDDT_O 0x00865154u
+#define RAIN_PRIME  40
+static void photo_rain(CPU *c, uint32_t rain){
+    static int was = -1, prime;
+    int pw = photo_weather();
+    if (pw != was){ prime = pw == 1 ? RAIN_PRIME : 0; was = pw; }
+    MRF32(rain + 0x5094u) = (float)pw; MRF32(rain + 0x1f0u) = (float)pw;
+    if (pw == 1){ MRF32(rain + 0x5098u) = 0.0f; MRF32(rain + 0x509cu) = 0.0f; }   /* an overcast sky with it */
+    if (!photo_stands()){ hfr_rain_update(c); return; }
+    float dt = MRF32(A_WORLDDT_O);
+    uint32_t ret = MR32(c->esp);
+    for (; prime > 0; prime--){                 /* (the call pops its return: pushed again for the next) */
+        MRF32(A_WORLDDT_O) = 1.f / 60.f; c->ecx = rain;
+        sub_0061f120_orig(c);
+        c->esp -= 4u; MR32(c->esp) = ret;
+        MRF32(rain + 0x1f0u) = (float)pw;
+    }
+    MRF32(A_WORLDDT_O) = 1e-4f; c->ecx = rain;
+    hfr_rain_update(c);
+    MRF32(A_WORLDDT_O) = dt;
+}
 void sub_0061f120(CPU *c){
     void split_rain_begin(CPU *); void split_rain_end(void);
     split_rain_begin(c);
     uint32_t rain = c->ecx;
     int fr = force_rain();
+    if (rain && mem_is_committed(rain + 0x50a3u) && photo_weather() >= 0){ photo_rain(c, rain); split_rain_end(); return; }
     if (fr && rain && mem_is_committed(rain + 0x50a3u))
         MRF32(rain + 0x5094u) = (fr == 1 || fr == 4) ? 1.0f : 0.0f;
     hfr_rain_update(c);
@@ -508,9 +584,18 @@ void sub_0060faa0(CPU *c){
  * and the product made again (the view times the projection).  photo.c
  * gives the lens's point as where far away lands (a part of the view's half
  * width): the eye's move a is that times F / P00, the same scale for y, so
- * the blur is round on the screen. */
+ * the blur is round on the screen.  Photo mode's lens shift moves the
+ * picture's middle (the projection's third row again, before the frame's
+ * shift), the game drawing wider for it (photo.c gives a wider field of view
+ * and how much: the projection is made that much bigger again, so what the
+ * shift brings in was not culled); a picture in tiles makes the projection N
+ * times as big and moves it so that one tile fills the screen (its x and y
+ * columns times N, then a move of the third row).  P00 for the lens's eye move
+ * is the picture's (pic_p00: the projection without the tiles'). */
 float input_view_roll(void);
 int photo_view(uint16_t *fov, float *roll, float *jit);
+void look_view(uint32_t id, uint32_t cam);  /* look.c: the right stick's look round the car turns the camera */
+static float pic_p00;                       /* the picture's P00 (without the tiles'), for the next frame's lens */
 static void photo_shear(uint32_t plat, const float *j){
     float *V = (float *)(g_mem + plat), *Pr = V + 16, *M = V + 32;
     float p00 = Pr[0], p11 = Pr[5], p23 = Pr[11];
@@ -523,6 +608,17 @@ static void photo_shear(uint32_t plat, const float *j){
         fprintf(stderr, "[photo] the view's product made again: %s (off by %g); P00 %.3f P11 %.3f P23 %.3f\n",
                 e < 1e-3f ? "as the game's" : "NOT as the game's", (double)e, (double)p00, (double)p11, (double)p23);
     }
+    /* the lens shift: the game drew j[7] times wider; the picture's middle to (j[5], j[6]) (x right, y up) */
+    float k = j[7] >= 1.f ? j[7] : 1.f, n = j[8] >= 1.f ? j[8] : 1.f;
+    float ox = -j[5], oy = -j[6];
+    /* a tile: column j[9] of n from the left, row j[10] from the top; the whole picture's x and y n times as big, moved
+     * so that the tile's middle is the screen's */
+    float tx = n > 1.f ? 2.f * j[9] + 1.f - n : 0.f, ty = n > 1.f ? n - 2.f * j[10] - 1.f : 0.f;
+    for (int r = 0; r < 4; r++){ Pr[r * 4] *= k * n; Pr[r * 4 + 1] *= k * n; }
+    Pr[8] += (n * ox - tx) * p23; Pr[12] += (n * ox - tx) * Pr[15];
+    Pr[9] += (n * oy - ty) * p23; Pr[13] += (n * oy - ty) * Pr[15];
+    pic_p00 = p00 * k;
+    p00 = Pr[0]; p11 = Pr[5];
     Pr[8] += j[0] * p23 + (j[4] > 0.f ? j[2] * p00 / j[4] : 0.f);
     Pr[9] += j[1] * p23 + (j[4] > 0.f ? j[3] * p11 / j[4] : 0.f);
     for (int r = 0; r < 4; r++) for (int k = 0; k < 4; k++)
@@ -542,16 +638,18 @@ void sub_005c7ec0(CPU *c){
     uint32_t plat = c->ecx, view = MR32(c->esp + 4u);
 #ifdef __wasm__
     uint32_t cam = 0, fcam = 0; uint8_t keep[0x40]; uint16_t fov = 0, fkeep = 0;
-    float pj[5] = { 0 };
+    float pj[11] = { 0 };
     int shift = 0;
     if (view && mem_is_committed(view + 0x43u) && (MR32(view + 4u) == 1u || MR32(view + 4u) == 4u)){
+        look_view(MR32(view + 4u), MR32(view + 0x40u));     /* till after Present, for everything drawn */
         float a = input_view_roll(), pr = 0.f;
         if (photo_view(&fov, &pr, pj)){
             a += pr;
             fcam = MR32(view + 0x40u);
             if (fcam && mem_is_committed(fcam + 0xc5u)){ fkeep = MR16(fcam + 0xc4u); MR16(fcam + 0xc4u) = fov; }
             else fcam = 0;
-            shift = (pj[0] != 0.f || pj[1] != 0.f || pj[2] != 0.f || pj[3] != 0.f) && plat && mem_is_committed(plat + 0xbfu);
+            shift = (pj[0] != 0.f || pj[1] != 0.f || pj[2] != 0.f || pj[3] != 0.f || pj[5] != 0.f || pj[6] != 0.f || pj[8] > 1.f)
+                    && plat && mem_is_committed(plat + 0xbfu);
         }
         cam = a != 0.f || shift ? MR32(view + 0x40u) : 0u;
         if (cam && mem_is_committed(cam + 0x3fu)){
@@ -560,7 +658,7 @@ void sub_005c7ec0(CPU *c){
             if (shift){
                 /* the lens's point (far away's move, in half widths) as the eye's move in metres, round in the view:
                  * times the focus distance over the projection's x scale (the view's own, as the last frame made it) */
-                float p00 = MRF32(plat + 0x40u), s = p00 > 0.05f && p00 < 50.f && pj[4] > 0.f ? pj[4] / p00 : 0.f;
+                float p00 = pic_p00 > 0.f ? pic_p00 : MRF32(plat + 0x40u), s = p00 > 0.05f && p00 < 50.f && pj[4] > 0.f ? pj[4] / p00 : 0.f;
                 pj[2] *= s; pj[3] *= s;
                 MRF32(cam + 0x30u) -= pj[2]; MRF32(cam + 0x34u) -= pj[3];
             }
@@ -937,9 +1035,9 @@ void sub_004e8b70(CPU *c){
  * the page may play under instead), and while no profile is loaded the box
  * starts with its letters and digits.  The other kind-6 boxes (12 at most)
  * stay as they are.
- * The default itself is no name the field makes in six of the languages: in
- * the Chinese, Japanese and Thai packs, in Korean, and in the Polish and
- * Hungarian packs (NAME with an accented letter) it has bytes of the game's font that the
+ * The default itself is no name the field makes in seven of the languages: in
+ * the Chinese, Japanese and Thai packs, in Korean, and in the Polish,
+ * Hungarian and Czech packs (NAME with an accented letter) it has bytes of the game's font that the
  * field never takes (0x4FF310: letters and digits only), and what is typed
  * goes after them.  A profile named so lives in a folder the I/O worker names
  * by the path's UTF-8, with U+FFFD for those bytes, which the game reads back
@@ -1002,7 +1100,7 @@ void sub_004ff3b0(CPU *c){
  * (roam_host.h RH_FE_NODES; the list below); the packages are drawn one
  * after another, and sub_0050b430 lets go of the nodes after each. */
 #define FE_LIST      1024u                /* the renderer's own list: +0x110 the count, +0x114 entries (object, depth key) */
-#define FE_LIST_BIG  4096u                /* ...and ours past it */
+#define FE_LIST_BIG  8192u                /* ...and ours past it */
 #define FE_NODES     FE_LIST_BIG
 void sub_0050b410_orig(CPU *c);
 void sub_0050b410(CPU *c){
@@ -1945,4 +2043,40 @@ void sub_00489ba0(CPU *restrict c){
 #endif
     g_shrot_lifted++;
     sub_00489ba0_orig(c);
+}
+
+/* The game releases a D3D texture it no longer wants through a list (0x8763B0:
+ * a pack's unload, 0x5CAAA0 and 0x5CE6C0, and 0x5CE170 when it makes a
+ * texture again for a TextureInfo that had one), and its main loop releases
+ * the three oldest a frame (0x5CE4C0, from 0x5CEC80).  Until then a texture
+ * keeps its Lock buffers in the guest heap (com.c), 1 MB for a 512x512 one.  A
+ * world's unload queues a thousand at once, and on the way back into a
+ * crowded free roam every car of our own made (roam_game.c begin_create, two
+ * every four frames) makes its ride's car type's textures again: the old ones
+ * waited behind the unloaded world's, 100 MB and more of them at once, and
+ * the guest heap's 512 MB ran out (2026-11-04 reports: HeapAlloc of 1398016,
+ * 0x5CE170's buffer for a 512x512 palettized texture with mips, failing).  So
+ * the list goes for up to TEXREL_MS of release work a frame (at least the
+ * game's three, at most TEXREL_A_FRAME): the game's own release, run again
+ * as often as that takes; as the game does with three or fewer, at the same
+ * point of its frame (the renderer keeps a texture a frame still draws).  A
+ * count alone made the unload hitch: 256 512x512 textures are ~24 ms of
+ * giving their Lock buffers back.  NFSU2_TEST_TEXREL_GAME=1 (test runs): the
+ * game's three. */
+#define TEXREL_LIST     0x008763b0u
+#define TEXREL_A_FRAME  256
+#define TEXREL_MS       2.0
+void sub_005ce4c0_orig(CPU *c);
+void sub_005ce4c0(CPU *c){
+    static int game = -1;
+    if (game < 0){ const char *s = getenv("NFSU2_INPUT_SCRIPT"), *e = getenv("NFSU2_TEST_TEXREL_GAME");
+                   game = s && *s && e && *e == '1'; }
+    if (game){ sub_005ce4c0_orig(c); return; }
+    uint32_t ret = MR32(c->esp);
+    double t0 = ms_now();
+    for (int n = 3; ; n += 3){
+        sub_005ce4c0_orig(c);                              /* up to three, and its ret */
+        if (n >= TEXREL_A_FRAME || MR32(TEXREL_LIST) == TEXREL_LIST || MR8(0x0087079cu) || ms_now() - t0 >= TEXREL_MS) break;
+        c->esp -= 4u; MR32(c->esp) = ret;                  /* as if called again */
+    }
 }

@@ -15,6 +15,8 @@ WASI="${WASI:-$(ls -d "$ROOT"/deps/wasi-sdk-*-arm64-macos "$ROOT"/deps/wasi-sdk-
 [ -x "$WASI/bin/clang" ] || { echo "wasi-sdk not found in deps/ (set WASI=...)"; exit 1; }
 # guest memory accesses must keep their may_alias types (cpu.h)
 WASI="$WASI" web/tools/aliasguard.sh > /dev/null || { WASI="$WASI" web/tools/aliasguard.sh; exit 1; }
+# a worktree's gen links: to the lift of this checkout's sources made before, if there is one (web/tools/gencache.sh)
+web/tools/gencache.sh link
 [ -f gen/all/fntab.c ] || { echo "gen/all missing: run web/gen.sh <path to SPEED2.EXE>"; exit 1; }
 [ -f gen/server/fntab.c ] || { echo "gen/server missing: run web/gen.sh <path to SPEED2.EXE> (it lifts server.dll too)"; exit 1; }
 # The lift must be the one this runtime needs: its _orig declarations, and
@@ -91,8 +93,8 @@ HDRSUM="$( (cat runtime/cpu.h runtime/splitscreen_mem.h runtime/web/compat/wasm_
 # browser's virtual-LAN backend (runtime/web/net_lan.c); module.c + modheap.c
 # load the lifted server.dll; enhance.c holds the graphics options (all off by
 # default, as on the Mac).
-RT="mem dispatch genexec heap watchdog win32 win32_ext com debug res fileio overrides d3dx_hle vsemu oracle autotest lifecycle widescreen framerate dinput_pad dikeys keyboard dinput_kbd career intro drifttest roam roam_core roam_game mprace horn hornmenu optslider tonemenu powerunits radio drift carsfx racehorn racenet winsock online netrace module modheap enhance headlights language sms sponsors lobbyclick olfilter tunegraph menusize regional garage sndlead carshadow hiddenraces carspot movie photo savegame uniques showoff"
-RT="$RT splitscreen"
+RT="mem dispatch genexec heap watchdog win32 win32_ext com debug res fileio overrides d3dx_hle vsemu oracle autotest lifecycle widescreen framerate dinput_pad dikeys keyboard dinput_kbd career intro drifttest roam roam_core roam_game mprace mpcredit horn hornmenu optslider tonemenu powerunits radio drift carsfx racehorn racenet racecars winsock online netrace module modheap enhance headlights language sms sponsors lobbyclick olfilter tunegraph menusize regional garage sndlead carshadow hiddenraces visualrep carspot walls movie photo look savegame uniques showoff quickrace cameras vinylcat vinylpacks lightkey trafficcars shownames hudbank"
+RT="$RT splitscreen coop"
 WEB="$(cd runtime/web && ls *.c | sed 's/\.c$//')"
 pids=""
 for f in $RT; do

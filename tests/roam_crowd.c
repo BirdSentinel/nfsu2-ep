@@ -11,7 +11,7 @@ __attribute__((import_module("crowd"), import_name("send"))) void js_send(uint32
 __attribute__((import_module("crowd"), import_name("event"))) void js_event(int ev, const char *t, int n);
 
 /* the C library this needs: roam_core.c calls memcmp, its name filter (names.h)
- * strcmp, strncmp, strchr, strstr, strlen and memcpy, the compiler may call the others */
+ * strcmp, strncmp, strchr, strstr, strlen, strcpy, strcat and memcpy, the compiler may call the others */
 void *memcpy(void *d, const void *s, unsigned long n){ unsigned char *o = d; const unsigned char *i = s; while (n--) *o++ = *i++; return d; }
 void *memmove(void *d, const void *s, unsigned long n){
     unsigned char *o = d; const unsigned char *i = s;
@@ -25,6 +25,8 @@ int memcmp(const void *a, const void *b, unsigned long n){
     return 0;
 }
 unsigned long strlen(const char *s){ unsigned long n = 0; while (s[n]) n++; return n; }
+char *strcpy(char *d, const char *s){ char *o = d; while ((*o++ = *s++)) {} return d; }
+char *strcat(char *d, const char *s){ strcpy(d + strlen(d), s); return d; }
 int strcmp(const char *a, const char *b){
     while (*a && *a == *b){ a++; b++; }
     return (unsigned char)*a - (unsigned char)*b;
@@ -49,7 +51,7 @@ char *strstr(const char *h, const char *n){
 }
 
 static rc_session S;
-static uint8_t IO[4096];                     /* a datagram, or the name, car type and parts */
+static uint8_t IO[4096];                     /* a datagram, or the name, car type, parts and flag */
 static void io_send(void *u, uint32_t ip, uint16_t port, const uint8_t *b, int n){ (void)u; js_send(ip, port, b, n); }
 static void io_event(void *u, int ev, int peer, const char *t){ (void)u; (void)peer; js_event(ev, t, (int)strlen(t)); }
 
@@ -60,7 +62,7 @@ __attribute__((export_name("crowd_links"))) void crowd_links(uint32_t n){ LINKS 
 /* the buffer the script writes a name or a received datagram into */
 __attribute__((export_name("crowd_io"))) uint8_t *crowd_io(void){ return IO; }
 
-/* name (in IO, 0-terminated), id, room hash, a crew's hash (0: none), the hub's address, our port, the car type's
+/* name, car type, parts and flag (in IO, each 0-terminated), id, room hash, a crew's hash (0: none), the hub's address, our port, the car type's
  * name hash, states per SNAP */
 __attribute__((export_name("crowd_init"))) void crowd_init(uint32_t id, uint32_t room, uint32_t crew, uint32_t hub_ip, uint32_t port,
                                                            uint32_t type_hash, uint32_t states, double now_us){
@@ -70,6 +72,9 @@ __attribute__((export_name("crowd_init"))) void crowd_init(uint32_t id, uint32_t
     cf.max_players = RC_MAX_PLAYERS; cf.rate_hz = 20; cf.snap_states = (int)states; cf.hub_ip = hub_ip; cf.hub_port = (uint16_t)port;
     cf.links = LINKS;
     rc_name_clean(cf.name, (const char *)IO, RC_NAME_MAX);
+    { /* the flag before the name (--flags), after the parts */
+      const char *t = (const char *)IO + strlen((const char *)IO) + 1, *pa = t + strlen(t) + 1, *f = pa + strlen(pa) + 1;
+      for (int i = 0; i < RC_FLAG_MAX && f[i]; i++) cf.flag[i] = f[i]; }
     rc_io io = { 0, io_send, 0, io_event };
     rc_session_init(&S, &cf, &io);
     rc_carcfg cc; memset(&cc, 0, sizeof cc);

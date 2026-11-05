@@ -13,6 +13,8 @@
  *     blocks of the songs after it from the music's stream (the two readers of an EALayer3 song also share one
  *     decoder).  Both readers take the page's words as they were at the start of the mixer step, so they hand over
  *     the same frames and the track ends for both in the same step.
+ * The next-song key (F7 on the page), radio on or off, stops the song playing the same way, so the game starts its next
+ * one (skip_song).
  * A track the page cannot decode is skipped; a page that does not answer in 20 s gives silence, and one that stops
  * writing in the middle of a track ends it; memory that does not look right switches the radio off (radio_fail),
  * never the game.  Radio off: every wrapper calls the game's own code.  Log lines are "[radio] ...".
@@ -20,8 +22,13 @@
  * and their inputs (read every step); the game stopping a song ends the track, a song going on to its next part does not.
  * Every address read from the game's memory is checked with in_guest before it is followed; what the page writes is
  * only used through the sequence locks, the ring mask, the `have` bound and the sample limit.
+ * While the page listens (its Last.fm scrobbles, web/src/app/lastfm.ts), radio on or off, the runtime also tells it
+ * which song plays and how long it has been heard (song_heard_*): the song's tags at its start, the time mixed and not
+ * paused, and whether it played to its end (the game's stream reader hands over fewer frames than asked; a folder
+ * track is over).
  * Outside the browser (the Mac port and its tests) the wrappers at the end call the game's own code. */
 #include "cpu.h"
+#include "guest_span.h"
 
 /* ---- the game's functions (sub_ names are the lifter's; tools/genstamp.sh reads the _orig ones from here) ---- */
 void sub_007292bc_orig(CPU *c);   /* the mixer step, every few ms: we find the song's two readers, stop the game's song when the track ends or the radio is switched */
@@ -99,6 +106,7 @@ typedef struct {
     uint32_t text; float *ring;                    /* the tags' guest address; the rings, malloc'd outside the game's heap, in the memory the page sees */
     uint32_t native[TRAX_WORDS];                   /* the lent entry's own words */
     const char *stop;                              /* set: the game's song is stopped at the next mixer step; why */
+    uint32_t skip_seen;                            /* the page's skip count taken so far */
 } Radio;
 
 static Music g_music;
@@ -106,12 +114,21 @@ static Song g_song;
 static PageNow g_page_now;
 static Radio g_radio = { .lent = NO_TAGS_LENT };
 
+typedef struct { uint64_t frames; uint32_t seq; int ended; } Heard;   /* the song playing as the page was told of it */
+static Heard g_heard;
+static void song_heard_start(HostStatusRadio *r, uint32_t kind, unsigned index);
+
 _Static_assert(TRAX_TABLE + TRAX_ENTRY_SIZE * RADIO_TRACKS < GUEST_END, "the table is in the guest");
 _Static_assert(RADIO_TRACKS == 27, "the game's EA Trax table has 27 songs");
 
 static uint32_t trax_word(unsigned index, unsigned word){ return TRAX_TABLE + TRAX_ENTRY_SIZE * index + 4u * word; }
 static int radio_on(const HostStatusRadio *r){ return __atomic_load_n(&r->on, __ATOMIC_ACQUIRE) & 1u; }
+#ifdef __wasm__
+/* (or the guest heap's window above the runtime: guest_span.h) */
+static int in_guest(uint32_t at, uint32_t len){ return guest_span(GUEST_START, at, len); }
+#else
 static int in_guest(uint32_t at, uint32_t len){ return at >= GUEST_START && len < GUEST_END && at <= GUEST_END - len; }
+#endif
 static int page_has_track_for(const HostStatusRadio *r, unsigned place){
     return place < RADIO_PLACES && (__atomic_load_n(&r->offer.places, __ATOMIC_ACQUIRE) >> place) & 1u;
 }
@@ -243,6 +260,19 @@ static void stop_game_song(CPU *c){
     g_radio.stopping = 0;
 }
 
+/* The next-song key (F7 on the page, RadioLink.skip), radio on or off: the song playing is stopped as at a track's end,
+ * so the game starts its next one, EA Trax's next song or, with the radio on, the folder's next track (the page offers
+ * it).  Only a song that plays: none (a drift or drag race, between two songs) or a paused one (the pause menu, where
+ * the stop would wait for the game to go on) lets the press go. */
+static void skip_song(HostStatusRadio *r){
+    follow_music_inputs(r);
+    if (!g_music.count || g_music.paused){
+        fprintf(stderr, "[radio] next song: %s, nothing to skip\n", g_music.count ? "the song is paused" : "no song plays");
+        return;
+    }
+    if (!g_radio.stop) g_radio.stop = "next song (F7)";
+}
+
 /* the radio was switched on (1), or cannot be: there is no room for the rings (0); stop: the song playing is the game's and is stopped */
 static int switch_on(HostStatusRadio *r, int stop){
     g_radio.on_seen = __atomic_load_n(&r->on, __ATOMIC_ACQUIRE);
@@ -278,7 +308,8 @@ static void ask_page_for_track(HostStatusRadio *r, unsigned place){
 
 static void start_radio_song(HostStatusRadio *r, unsigned index){
     unsigned place = place_now();
-    int going = (g_song.who == SONG_WAITING || (g_song.who == SONG_FOLDER && !g_song.over)) && g_song.place == place;
+    /* the game going on to its song's next part keeps the track; one we stopped (stop_game_song: the next-song key) does not */
+    int going = (g_song.who == SONG_WAITING || (g_song.who == SONG_FOLDER && !g_song.over)) && g_song.place == place && !g_song.ended;
     if (going){
         lend_tags(index);
         g_song.again = 1;
@@ -286,9 +317,11 @@ static void start_radio_song(HostStatusRadio *r, unsigned index){
     } else if (copy_tags(r, place)){
         ask_page_for_track(r, place);
         lend_tags(index);
+        song_heard_start(r, RADIO_SONG_FOLDER, index);
         fprintf(stderr, "[radio] song starts in %s (entry %u): asks the page for a track\n", place ? "driving" : "menus", index);
     } else {
         song_start(SONG_SILENT, place);
+        song_heard_start(r, RADIO_SONG_NONE, index);
         fprintf(stderr, "[radio] silence: no track fits %s\n", place ? "driving" : "menus");
     }
 }
@@ -375,12 +408,63 @@ static void read_folder_track(HostStatusRadio *r, unsigned ch, uint32_t out, uin
 /* the ring of a reader: the side its input feeds (the two sides differ, follow_music_inputs) */
 static unsigned ring_of_reader(uint32_t reader){ return g_music.side[g_music.reader[0] == reader ? 0u : 1u]; }
 
+/* ---- the song playing, for the page's scrobbles (radio_proto.h song_*) ---- */
+
+static int listening(const HostStatusRadio *r){ return __atomic_load_n(&r->listen, __ATOMIC_ACQUIRE) != 0u; }
+
+/* a line of the game's text at `at`, cut to the tag's size (and where the game's memory ends) */
+static void game_line(char *to, uint32_t at){
+    memset(to, 0, RADIO_TAG);
+    for (unsigned k = 0; k + 1u < RADIO_TAG && in_guest(at + k, 1u) && g_mem[at + k]; k++) to[k] = (char)g_mem[at + k];
+}
+
+/* The game starts a song: the page is told its kind and tags (a game's song: its table entry `index`, before any
+ * tags are lent; the Radio's track: the tags lent), and the time heard counts from 0. */
+static void song_heard_start(HostStatusRadio *r, uint32_t kind, unsigned index){
+    static const unsigned word_of_line[3] = { 1, 0, 2 };   /* artist, title, album: the entry's second, first and third word */
+    if (!listening(r)) return;
+    char (*text)[RADIO_TAG] = r->song_text;
+    g_heard.frames = 0;
+    g_heard.ended = 0;
+    g_heard.seq += 2u;
+    __atomic_store_n(&r->song_seq, g_heard.seq - 1u, __ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    for (unsigned line = 0; line < 3u; line++){
+        if (kind == RADIO_SONG_GAME && index < RADIO_TRACKS) game_line(text[line], MR32(trax_word(index, word_of_line[line])));
+        else if (kind == RADIO_SONG_FOLDER && g_radio.text && in_guest(g_radio.text, 3u * RADIO_TAG)) game_line(text[line], g_radio.text + RADIO_TAG * line);
+        else memset(text[line], 0, RADIO_TAG);
+    }
+    __atomic_store_n(&r->song_kind, kind, __ATOMIC_RELAXED);
+    __atomic_store_n(&r->song_ms, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&r->song_seq, g_heard.seq, __ATOMIC_RELEASE);
+}
+
+/* The song's first reader handed the mixer `got` of the `n` frames it was asked for: heard, unless the game has the
+ * sound paused or the Radio plays silence.  A game's song whose reader says "end of stream" (-1, after which the mixer
+ * frees its input) or hands over fewer has come to its end. */
+static void song_heard_frames(HostStatusRadio *r, uint32_t reader, uint32_t n, uint32_t got){
+    if (!listening(r) || !g_music.count || reader != g_music.reader[0] || g_music.paused) return;
+    int folder = radio_on(r) && g_song.who != SONG_GAME;
+    if (folder && g_song.who != SONG_FOLDER) return;
+    uint32_t rate = MR16(MIXER_RATE);
+    if (rate < MIXER_RATE_MIN || rate > MIXER_RATE_MAX) rate = RADIO_RATE;
+    int end = folder ? g_song.over : (int32_t)got < 0 || got < n;
+    g_heard.frames += folder ? n : (int32_t)got < 0 ? 0u : got < n ? got : n;
+    __atomic_store_n(&r->song_ms, (uint32_t)(g_heard.frames * 1000u / rate), __ATOMIC_RELAXED);
+    if (!g_heard.ended && end){
+        g_heard.ended = 1;
+        __atomic_store_n(&r->song_end, g_heard.seq, __ATOMIC_RELEASE);
+    }
+}
+
 /* ---- the wrappers: the radio in the browser, the game's own code elsewhere ---- */
 
 void sub_007292bc(CPU *c){
     HostStatusRadio *r = host_status_radio();
     int on = radio_on(r);
-    if (!on && !g_radio.was_on && !g_radio.stop && g_radio.lent == NO_TAGS_LENT){
+    uint32_t skip = __atomic_load_n(&r->skip, __ATOMIC_ACQUIRE);
+    if (!on && !g_radio.was_on && !g_radio.stop && g_radio.lent == NO_TAGS_LENT && skip == g_radio.skip_seen){
+        if (listening(r)) follow_music_inputs(r);   /* (the song's readers, for the time heard) */
         sub_007292bc_orig(c);
         return;
     }
@@ -389,12 +473,16 @@ void sub_007292bc(CPU *c){
     g_radio.was_on = on;
     if (on && g_song.who == SONG_SILENT && page_has_track_for(r, g_song.place)) g_radio.stop = "a track fits this place now";
     if (on && !g_radio.stop && g_song.who == SONG_FOLDER && g_song.over && !g_song.ended) g_radio.stop = "track over";
+    if (skip != g_radio.skip_seen){
+        g_radio.skip_seen = skip;
+        skip_song(r);
+    }
     if (g_radio.stop) stop_game_song(c);
     if (on){
         follow_music_inputs(r);
         follow_page(r);
         take_page_now(r);
-    }
+    } else if (listening(r)) follow_music_inputs(r);
     sub_007292bc_orig(c);
 }
 
@@ -416,6 +504,7 @@ void sub_004580e0(CPU *c){
     if (radio_on(r) && __atomic_load_n(&r->on, __ATOMIC_ACQUIRE) != g_radio.on_seen && !switch_on(r, 0)) g_song.who = SONG_GAME;
     else if (radio_on(r) && index < RADIO_TRACKS) start_radio_song(r, index);
     else g_song.who = SONG_GAME;
+    if (g_song.who == SONG_GAME) song_heard_start(r, index < RADIO_TRACKS ? RADIO_SONG_GAME : RADIO_SONG_NONE, index);
     g_radio.stop = NULL;
     sub_004580e0_orig(c);
 }
@@ -435,6 +524,7 @@ void sub_0072d18d(CPU *c){
     if (!radio_on(r) || g_song.who == SONG_GAME || !list_has(g_music.reader, g_music.count, reader)
         || n > MIXER_MAX_FRAMES || !in_guest(out, 4u * n)){
         sub_0072d18d_orig(c);
+        song_heard_frames(r, reader, n, c->eax);
         return;
     }
     sub_0072d18d_orig(c);
@@ -445,6 +535,7 @@ void sub_0072d18d(CPU *c){
         if (g_song.who != SONG_SILENT) g_song.waited += n;
     }
     if (g_song.who != SONG_SILENT) c->eax = n;   /* never the end of the stream, also past the track's end (see the top) */
+    song_heard_frames(r, reader, n, n);
 }
 #else
 void sub_007292bc(CPU *c){ sub_007292bc_orig(c); }

@@ -27,8 +27,8 @@ export interface RendererOptions extends CommonOptions {
   /** tests: scale of those dumps */
   dumpScale?: number;
   /** the GPU device was lost while the game ran (a graphics driver reset, the browser's graphics process
-   *  crashed): nothing is drawn from then on */
-  onLost?(): void;
+   *  crashed): nothing is drawn from then on.  why: the browser's reason and message (the log's "[gpu] device lost" line) */
+  onLost?(why: string): void;
   /** every frame drawn, in the same task: quick chat's places over the cars in it, n of { id, x, y, scale } (ids in
    *  ids[4i], the rest in m[4i + 1..3]; x, y parts of the game's image; the arrays are reused: read them at once) */
   onMarks?(n: number, m: Float32Array, ids: Uint32Array): void;
@@ -65,6 +65,10 @@ export interface NetOptions extends CommonOptions {
   say?: (json: string) => void;
   /** free roam: the player's car and another's touched front bumpers for 3 s, or parted, as JSON from the game */
   bump?: (json: string) => void;
+  /** free roam: a drift battle's scoreboard, as JSON from the game ("{}": none; drift.ts) */
+  battle?: (json: string) => void;
+  /** co-op free roam: player 2 online, as JSON from the game ({"name"}; "{}": its endpoint ended) */
+  coop?: (json: string) => void;
   /** free roam: a friend message from the server */
   friend?: (m: Record<string, unknown>) => void;
   /** the server's LAN took this page back after the link was lost (a server restart, as for a deploy) */
@@ -135,9 +139,9 @@ export interface InputSubsystem extends Subsystem {
   sms?(id: number): boolean;
   /** photo mode (runtime/photo.c, photo.ts): what (its PH_* number) and its values; false: it cannot reach the game */
   photo?(what: number, a?: number, b?: number): boolean;
-  /** a new name for free roam and Online mode, now (the operator took the old one away); false: it cannot reach the
-   *  game */
-  name?(name: string): boolean;
+  /** a new name for free roam and Online mode, now (the operator took the old one away), or (seat2) for co-op's player 2
+   *  in free roam; false: it cannot reach the game */
+  name?(name: string, seat2?: boolean): boolean;
   /** every key and button the game holds goes up (photo mode takes the keys) */
   releaseAll?(): void;
   /** performance.now() of the player's last key, mouse or controller input; null: the page cannot tell

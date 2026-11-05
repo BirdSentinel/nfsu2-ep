@@ -42,15 +42,39 @@ pub(crate) const HF_LOBBY: u16 = 0x0080;
 pub(crate) const HF_CREW: u16 = 0x0200;
 /// HELLO's flag: this player reads the hub's crew marks (roam_core.h RC_HF_HUBCREW; `write_peers`)
 pub(crate) const HF_HUBCREW: u16 = 0x0400;
+/// HELLO's flag: this endpoint is the second local player of the browser at its address (roam_core.h RC_HF_SEAT2: co-op
+/// free roam, player 2 beside player 1 on one screen, on a port of its own): hub.rs `Player::seat2`
+pub(crate) const HF_SEAT2: u16 = 0x2000;
 /// in a list's crew marks, past the crews' bits: that player is a friend (roam_core.h RC_MARK_FRIEND; `write_peers`)
 pub(crate) const MARK_FRIEND: u8 = 0x80;
+/// in a list's marks of a player whose core reads one-way links (CORE_ONEWAY: `write_peers`): we get that player's
+/// car (its states) and send it nothing of ours, as it shows fewer players than we do (roam_core.h RC_MARK_RXONLY);
+/// or it gets ours and sends us nothing of its own (RC_MARK_TXONLY)
+pub(crate) const MARK_RXONLY: u8 = 0x20;
+pub(crate) const MARK_TXONLY: u8 = 0x40;
+/// the core version from which a player takes one-way links (roam_core.h RC_CORE_VER 15), and the most players its
+/// list then names: the ones it gets cars from (its links) and the ones it sends its own to (roam_core.h RC_LIST_MAX)
+pub(crate) const CORE_ONEWAY: u16 = 15;
+/// ...and from which its lists end in hints (roam_core.h RC_CORE_VER 16: `write_peers`): which of the players who only
+/// get its car are far off (an entry's index, plus HINT_VERYFAR), and why the hub let the cars near it go that it no
+/// longer lists (the player's id and RC_GONE_*), GONE_MAX at most
+pub(crate) const CORE_HINTS: u16 = 16;
+pub(crate) const HINT_VERYFAR: u8 = 0x80;
+pub(crate) const GONE_MAX: usize = 32;
+/// where a player who only gets our car gets every 4th of our snapshots (5 a second), and every 10th (roam_core.h
+/// RC_FAR_M, RC_VERYFAR_M: as a core finds it for a peer it gets states from)
+pub(crate) const FAR_M: f64 = 300.0;
+pub(crate) const VERYFAR_M: f64 = 1000.0;
+pub(crate) const LIST_MAX: usize = 96;
 /// the most crews a player is in (roam_core.h RC_CREW_MAX: the start page's four words)
 pub(crate) const CREWS: usize = 4;
 /// the most ids a HELLO names (roam_core.h RC_MAX_PEERS: its decoder takes no more)
-const SEEN_MAX: usize = 48;
-/// the most links a player has (roam_core.h RC_MAX_PEERS, core version 10: its HELLO says how many it wants, at most
-/// this); a core before version 10 reads lists of 32 at most (RC_PEERS_V9) and says nothing
-pub(crate) const LINKS_MAX: usize = 48;
+const SEEN_MAX: usize = 64;
+/// the most links a player has (roam_core.h RC_MAX_PEERS, core version 14: its HELLO says how many it wants, at most
+/// this); a core of versions 10 to 13 reads lists of 48 at most (RC_PEERS_V13), one before version 10 lists of 32
+/// (RC_PEERS_V9) and says nothing
+pub(crate) const LINKS_MAX: usize = 64;
+pub(crate) const LINKS_V13: usize = 48;
 pub(crate) const LINKS_V9: usize = 32;
 /// a LOBBY's ops (roam_core.h RC_LOBBY_*) the hub keeps: the host's advert and its end, and a player's ask to join
 pub(crate) const LOBBY_ADVERT: u8 = 1;
@@ -64,7 +88,8 @@ pub(crate) const LOBBIES_MAX: usize = 96;
 pub(crate) const LOBBY_PLAYERS: usize = 6;
 /// a MAPD entry (roam_core.h RC_MAPD_*): a player's key (u16 LE: the hub's slot, MAPD_GONE set when it went), then,
 /// unless gone, x, y (i16 LE, m), heading (u8, 256 a turn), its velocity's x and y (i8, m/s); at most MAPD_BYTES of
-/// entries a datagram, MAPD_PARTS datagrams an answer (2048 placed in all)
+/// entries a datagram, MAPD_PARTS datagrams an answer (2048 placed in all), MAPD_PARTS_WIDE to a MAPREQ with
+/// MAPREQ_WIDE in its flags (a page before it takes 16 at most; the game's 4096 with heights take 40)
 pub(crate) const MAPD_GONE: u16 = 0x8000;
 /// ...and, to a MAPREQ with MAPREQ_PARKED in its flags, MAPD_PARKED set in a placed player's key when it has stood at
 /// one spot for a minute (hub.rs PARKED_MS: the world map's car meets count those)
@@ -77,6 +102,8 @@ pub(crate) const MAPD_PLACE_Z: usize = 11;
 pub(crate) const HF_MAPZ: u16 = 0x0800;
 pub(crate) const MAPD_BYTES: usize = 1152;
 pub(crate) const MAPD_PARTS: usize = 16;
+pub(crate) const MAPREQ_WIDE: u16 = 2;
+pub(crate) const MAPD_PARTS_WIDE: usize = 48;
 pub(crate) const HDR: usize = 16;
 pub(crate) const CRC: usize = 4;
 
@@ -102,16 +129,20 @@ pub(crate) enum Msg<'a> {
         /// the other player of its outrun (core version 11: the id after the links byte, roam_core.c rc_set_duel), 0
         /// none: the two are linked first once each names the other (`duel_pairs`)
         duel: u32,
+        /// its flags say it is the second local player of its browser (HF_SEAT2)
+        seat2: bool,
     },
     /// v: the newest state's velocity, 0 where roam_core's decoder would not take it (not finite, 200 m/s or more);
-    /// heading: where its car points, 256 a turn (the game's atan2 of the forward row, roam_game.c); t_us: its time on
-    /// the sender's clock (µs, wraps), which counts on while the clock epoch `clock` stays
+    /// heading: where its car points, 256 a turn (the game's atan2 of the forward row, roam_game.c); slope: how steeply
+    /// its nose points up or down (`slope`); t_us: its time on the sender's clock (µs, wraps), which counts on while
+    /// the clock epoch `clock` stays
     Snap {
         sender: u32,
         status: u8,
         p: [f64; 3],
         v: [f64; 3],
         heading: u8,
+        slope: i8,
         t_us: u32,
         clock: u8,
     },
@@ -170,6 +201,9 @@ pub(crate) struct RaceRep<'a> {
     pub quit: bool,
     /// raced in a car whose game data is edited (its type's record in GLOBAL\GlobalB not the game's: RC_RR_EDITED)
     pub edited: bool,
+    /// the race in the reporter's career (roam_core.h rc_racerep credit, its first spare byte: 0 in older games): 0 not,
+    /// 1 its own win, 2 a friend's win
+    pub credit: u8,
     pub car_type: u8,
     /// 0 fastest .. 3; -1 not rated
     pub class: i8,
@@ -222,6 +256,7 @@ fn racerep(d: &[u8], o: usize) -> Option<RaceRep<'_>> {
         host: flags & 1 != 0,
         quit: flags & 2 != 0,
         edited: flags & 4 != 0,
+        credit: if d[o + 17] <= 2 { d[o + 17] } else { 0 },
         car_type: d[o + 15],
         class,
         rating: nums[0],
@@ -242,9 +277,16 @@ pub(crate) struct RaceRes {
     pub race: u32,
     pub mode: u8,
     pub laps: u8,
+    /// a URL race of heats: this report's heat (1 ..) of heats; 0 and 0 for a race of one heat, and from a game before
+    /// them (its last heat's alone)
+    pub heat: u8,
+    pub heats: u8,
     pub n: usize,
     pub rows: [ResRow; LOBBY_PLAYERS],
 }
+
+/// a URL race's heats at most (roam_core.h RC_RACERES_HEATS)
+pub(crate) const RACE_HEATS: u8 = 3;
 
 /// one racer's row: its player's id (0: one the reporter could not name), RS_* flags, its time (s, a finisher's), how
 /// far it came (laps) and the way it drove (m: its average speed for its time, as the reporter's game counted it)
@@ -255,6 +297,9 @@ pub(crate) struct ResRow {
     pub time: f64,
     pub done: f64,
     pub dist: f64,
+    /// the largest jump of its car as the reporter's game had it (m: a frame's move unlike the frame before's, not right
+    /// after a stall; racenet.c), 0 for the reporter's own row and from a game before it
+    pub jump: f64,
 }
 
 /// a RACERES's payload (at o, `len` bytes), or None where roam_core.c's decoder would not take it
@@ -270,6 +315,11 @@ fn raceres(d: &[u8], o: usize, len: usize) -> Option<RaceRes> {
     if lobby == 0 || race == 0 {
         return None;
     }
+    let (heat, heats) = (d[o + 11] & 15, d[o + 11] >> 4);
+    let heat_ok = if heats == 0 { heat == 0 } else { (2..=RACE_HEATS).contains(&heats) && (1..=heats).contains(&heat) };
+    if !heat_ok {
+        return None;
+    }
     let mut rows = [ResRow::default(); LOBBY_PLAYERS];
     for (k, row) in rows.iter_mut().enumerate().take(n) {
         let at = o + RACERES_HEAD + RACERES_ROW * k;
@@ -279,12 +329,12 @@ fn raceres(d: &[u8], o: usize, len: usize) -> Option<RaceRes> {
         if flags & !(RS_FINISHED | RS_OURS) != 0 || !fits(time, 100_000.0) || !fits(done, 1000.0) || !fits(dist, 1e6) {
             return None;
         }
-        *row = ResRow { id: u32_le(d, at), flags, time, done, dist };
+        *row = ResRow { id: u32_le(d, at), flags, time, done, dist, jump: u16_le(d, at + 5) as f64 };
     }
     if rows[..n].iter().filter(|r| r.flags & RS_OURS != 0).count() > 1 {
         return None;
     }
-    Some(RaceRes { lobby, race, mode: d[o + 8], laps: d[o + 9], n, rows })
+    Some(RaceRes { lobby, race, mode: d[o + 8], laps: d[o + 9], heat, heats, n, rows })
 }
 
 fn u16_le(d: &[u8], o: usize) -> u16 {
@@ -314,6 +364,25 @@ fn heading(d: &[u8], o: usize) -> u8 {
         return 0;
     }
     ((f1.atan2(f0) * 128.0 / std::f64::consts::PI + 0.5).floor() as i64 & 255) as u8
+}
+
+/// the steepest slope `slope` gives (%): steeper than a road, a car's nose points that way in the air or on its side
+pub(crate) const SLOPE_MAX: f64 = 30.0;
+
+/// how steeply a state's car points up (+) or down, in metres a hundred metres across: its forward row's height over
+/// its length in x and y (roam_core.c rc_q2m), within SLOPE_MAX; 0 for a quaternion of almost nothing or a car
+/// pointing (nearly) straight up or down.  On a road, the road's slope where the car points.
+fn slope(d: &[u8], o: usize) -> i8 {
+    let q = [0, 2, 4, 6].map(|k| i16::from_le_bytes([d[o + k], d[o + k + 1]]) as f64 / 32767.0);
+    if q.iter().map(|x| x * x).sum::<f64>() < 0.25 {
+        return 0;
+    }
+    let (f0, f1, f2) = (1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]), 2.0 * (q[0] * q[1] + q[2] * q[3]), 2.0 * (q[0] * q[2] - q[1] * q[3]));
+    let across = f0.hypot(f1);
+    if across < 0.1 {
+        return 0;
+    }
+    (100.0 * f2 / across).clamp(-SLOPE_MAX, SLOPE_MAX).round() as i8
 }
 
 /// One free-roam datagram, or None: the fields the hub needs (HELLO, SNAP, BYE), checked as roam_core.c's decoder
@@ -378,8 +447,8 @@ pub(crate) fn decode(d: &[u8]) -> Option<(u8, u32, Msg<'_>)> {
                     }
                 }
             }
-            let (lobbies, marks) = (flags & HF_LOBBY != 0, flags & HF_HUBCREW != 0);
-            Msg::Hello { sender, core, status, room, name, lobbies, marks, crews, links, duel }
+            let (lobbies, marks, seat2) = (flags & HF_LOBBY != 0, flags & HF_HUBCREW != 0, flags & HF_SEAT2 != 0);
+            Msg::Hello { sender, core, status, room, name, lobbies, marks, crews, links, duel, seat2 }
         }
         MSG_SNAP => {
             if end < 22 + 52 {
@@ -394,7 +463,16 @@ pub(crate) fn decode(d: &[u8]) -> Option<(u8, u32, Msg<'_>)> {
             if !p.iter().all(|x| x.is_finite()) || p[0].abs() > 20000.0 || p[1].abs() > 20000.0 || p[2].abs() > 2000.0 {
                 return None;
             }
-            Msg::Snap { sender, status, p, v: velocity(d, 38), heading: heading(d, 50), t_us: u32_le(d, 22), clock: d[21] }
+            Msg::Snap {
+                sender,
+                status,
+                p,
+                v: velocity(d, 38),
+                heading: heading(d, 50),
+                slope: slope(d, 50),
+                t_us: u32_le(d, 22),
+                clock: d[21],
+            }
         }
         MSG_MAPREQ if end == HDR + 6 || end == HDR + 8 => Msg::MapReq {
             req: u16_le(d, 16),
@@ -464,11 +542,19 @@ pub(crate) fn peers_crew_len(n: usize, k: usize) -> usize {
 }
 
 /// Writes a PEERS datagram into `b` (exactly `peers_len(n)` bytes long, or `peers_crew_len(n, mine.len())` with marks):
-/// list = [{ vip, port, id }] (at most the receiver's degree: 48, LINKS_MAX).  With marks (`b` the longer, `marks` n bytes) the
+/// list = [{ vip, port, id }] (at most the receiver's degree: 64, LINKS_MAX).  With marks (`b` the longer, `marks` n bytes) the
 /// list ends in the receiver's crew marks (HF_CREW on it): `mine` (its crews, at most CREWS, none 0; maybe none), then
 /// a byte per entry, `marks[i]` bit c: entry i is in crew `mine[c]` too; MARK_FRIEND: entry i is its friend.  So a
 /// player learns which of its peers are in its crews, and its friends, without anyone's crews but its own going out.
-pub(crate) fn write_peers(b: &mut [u8], sender: u32, seq: u16, list: impl ExactSizeIterator<Item = PeerEntry>, mine: &[u32], marks: &[u8]) {
+pub(crate) fn write_peers(
+    b: &mut [u8],
+    sender: u32,
+    seq: u16,
+    list: impl ExactSizeIterator<Item = PeerEntry>,
+    mine: &[u32],
+    marks: &[u8],
+    hints: &[u8],
+) {
     let len = b.len();
     let n = list.len();
     let with = len > peers_len(n);
@@ -496,6 +582,8 @@ pub(crate) fn write_peers(b: &mut [u8], sender: u32, seq: u16, list: impl ExactS
             o += 4;
         }
         b[o..o + n].copy_from_slice(&marks[..n]);
+        // (the hints after them, to a core of version 16: `hints` as `Hub::lists` wrote them)
+        b[o + n..o + n + hints.len()].copy_from_slice(hints);
     }
     let crc = crc32fast::hash(&b[..len - CRC]);
     b[len - CRC..].copy_from_slice(&crc.to_le_bytes());
@@ -510,7 +598,7 @@ pub fn encode_peers(sender: u32, seq: u16, list: &[PeerEntry]) -> Vec<u8> {
 pub fn encode_peers_crews(sender: u32, seq: u16, list: &[PeerEntry], mine: &[u32], marks: &[u8]) -> Vec<u8> {
     let with = !mine.is_empty() || !marks.is_empty();
     let mut b = vec![0u8; if with { peers_crew_len(list.len(), mine.len()) } else { peers_len(list.len()) }];
-    write_peers(&mut b, sender, seq, list.iter().copied(), mine, marks);
+    write_peers(&mut b, sender, seq, list.iter().copied(), mine, marks, &[]);
     b
 }
 

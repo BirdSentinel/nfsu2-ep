@@ -1,10 +1,12 @@
 // Quick chat's phrases and the player's sixteen (web/src/app/phrases.ts; settings.ts quick_chat_phrases,
 // quick_chat_groups):
 //   node --test web/test/phrases.test.mjs
-// - the numbers are the protocol: the phrases there were keep their numbers (a digest of the first 152 in order), a
-//   new one only goes at the end, and no text is there twice
+// - the numbers are the protocol: the phrases there were keep their numbers (a digest of the first 152 in order, the
+//   ones after by name), a new one only goes at the end, and no text is there twice
+// - the film quotes (Quotes) are in English in every language: no language file has them
 // - the two lines' values: sixteen numbers the library has, four of the categories; anything else refused at Play
-//   (the default instead), and the defaults the template shows are the first sixteen in Hi, Reply, Drive, Race
+//   (the default instead), and the defaults the template shows are the first sixteen in Hi, Reply, Drive, Race, but
+//   the countdown (152, the special phrase) in One more?'s place
 // The modules are bundled from web/src with esbuild, as web/test/settings-reset.test.mjs does.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,10 +33,28 @@ test('the phrases keep their numbers', () => {
   const cats = new Set(Q.CATS.map(c => c.id));
   for (const p of Q.PHRASES) assert.ok(cats.has(p.cat), `${p.text}: a category the groups can take`);
   for (const c of Q.CATS) assert.ok(Q.PHRASES.some(p => p.cat === c.id), `${c.id}: not empty`);
+  assert.equal(Q.COUNTDOWN, 152); assert.equal(texts[152], 'Countdown');
+  assert.equal(Q.PHRASES[152].special, 'countdown', 'the countdown is the special one (roam_game.c SAY_COUNTDOWN 152)');
+  assert.deepEqual(Q.PHRASES.filter(p => p.special).map(p => p.text), ['Countdown'], 'no other special phrase');
+  assert.deepEqual(texts.slice(153, 164), ['I need NOS!', 'Dude, I almost had you!', 'You almost had me?',
+    'Granny shifting, not double clutching like you should!', 'Nooo, Monica!', 'Ejecto seato, cuz!', 'Too soon, junior.',
+    'Don\'t leave town.', 'Forget about it, cuh.', 'Donkey Kong?', 'What you running under that, man?'], '153-163, as added');
+});
+
+test('the film quotes stay English in every language', async () => {
+  const fs = await import('node:fs');
+  const quotes = Q.PHRASES.filter(p => p.cat === 'quote').map(p => p.text), dir = path.join(ROOT, 'web/src/app/lang');
+  assert.equal(quotes.length, 10);
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
+    const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const q of quotes) assert.ok(!(q in d), `${f} translates "${q}"`);
+    assert.ok(d.Quotes && d['I need NOS!'], `${f}: the category's name and the NOS line translated`);
+  }
 });
 
 test('the player\'s sixteen', () => {
-  const all = Array.from({ length: 16 }, (_, i) => i);
+  const all = Array.from({ length: 16 }, (_, i) => i), dflt = [...all.slice(0, 15), 152];
+  assert.deepEqual(Q.DEFAULT_PHRASES, dflt, 'the first fifteen and the countdown');
   assert.equal(Q.phrasesOk(all.join(',')), true);
   assert.equal(Q.phrasesOk('151, 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14'), true, 'blanks after commas');
   assert.equal(Q.phrasesOk('0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0'), true, 'a phrase in more than one slot');
@@ -43,8 +63,9 @@ test('the player\'s sixteen', () => {
   assert.equal(Q.phrasesOk([Q.PHRASES.length, ...all.slice(1)].join(',')), false, 'a number the library does not have');
   assert.equal(Q.phrasesOk(['-1', ...all.slice(1)].join(',')), false);
   assert.equal(Q.phrasesOk(['x', ...all.slice(1)].join(',')), false);
-  assert.deepEqual(Q.phrasesOf(undefined), all);
-  assert.deepEqual(Q.phrasesOf('nonsense'), all, 'refused: the default');
+  assert.deepEqual(Q.phrasesOf(undefined), dflt);
+  assert.deepEqual(Q.phrasesOf('nonsense'), dflt, 'refused: the default');
+  assert.deepEqual(Q.phrasesOf(all.join(',')), all, 'the old default, saved: kept');
   assert.deepEqual(Q.phrasesOf([99, ...all.slice(1)].join(',')), [99, ...all.slice(1)]);
   assert.equal(Q.groupsOk('hi,reply,drive,race'), true);
   assert.equal(Q.groupsOk('Meet, React, help, nice'), true, 'any case, blanks');

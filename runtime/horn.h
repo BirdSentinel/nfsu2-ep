@@ -8,10 +8,11 @@
 
 #define HORN_VOICES 8                /* the player's horn and 7 others' */
 /* the kinds of horn, by number on the wire (roam_game.c's car look,
- * racehorn.c's message): 0 dual, 1 single, 2 truck, 3 train, 4 klaxon,
- * 5 cucaracha, 6 clown, 7 trombone.  A number past them (a newer build's)
- * sounds as the dual horn. */
-#define HORN_KINDS  8
+ * racehorn.c's message, which has room for 16): 0 dual, 1 single, 2 truck,
+ * 3 train, 4 klaxon, 5 cucaracha, 6 clown, 7 trombone, 8 dixie, 9 oldcar,
+ * 10 broken, 11 sputter, 12 thecar, 13 thecar_long.  A number past them (a
+ * newer build's) sounds as the dual horn. */
+#define HORN_KINDS  14
 
 /* 1 while the horn key (N) is held, or the controller's left stick click
  * when stick is 1: the callers pass 0 while the player's car has hydraulics,
@@ -40,6 +41,11 @@ void horn_preview(void);
  * a value out of that range is taken as its nearer end.  Any thread. */
 #define HORN_VOL_MIN 0.1f
 void horn_set_volume(float v);
+/* The game's Master Volume, 0 .. 1 (hornmenu.c reads it from the game's
+ * Audio options): every horn is that much of the volume above, as the
+ * game's own sounds are of their sliders.  horn.c asks on the game thread,
+ * at horn_begin and horn_preview. */
+float horn_game_master(void);
 /* Adds the sounding voices to an interleaved stereo float mix.  Mixer
  * thread. */
 void horn_mix(float *acc, unsigned frames, unsigned rate);

@@ -2,7 +2,7 @@
 // another browser, synced, settled when two browsers changed them, gone back a day, stopped or deleted.  Shown only
 // where the server keeps them (vaultAvailable).  One box holds the keyphrase in every state: the one this browser
 // syncs with (read only, with its download), or one typed in to load.  It shows the first 3 characters and dots for
-// the rest until its eye shows it all.  Only the tab that owns the saves syncs (instance.ts); the link (the keyphrase
+// the rest until its eye shows it all, for 30 s.  Only the tab that owns the saves syncs (instance.ts); the link (the keyphrase
 // and the version it has) is kept in this browser's localStorage, beside the saves it is for.  Where the browser has
 // passwords for sites, it is asked to keep the keyphrase too, which outlives the site's data, and a browser with no
 // link and no profile is asked for the one it keeps, whose saves the page offers (pwkeep.ts, `passwords`).
@@ -25,6 +25,7 @@ import { unzip, zip } from './zip';
 import { contentHash, kept, keeps, keptBy, keysOf, profilesIn, readPhrase, sideOf, vaultAvailable, VaultError, VaultSync, type Link, type Remote, type SaveFile, type Side, type SyncState } from './vault';
 import { codeOf, dateLocale, listOf, live, N, t, tn, tvars, type Msg } from './i18n';
 import { canKeep, keepPhrase, keptPhrase, markOf } from './pwkeep';
+import { copyToast } from './copy';
 
 export interface VaultPanelDeps {
   saveDir: string;
@@ -60,11 +61,21 @@ const keptKey = (saveDir: string) => serverStorageKey(`nfsu2-keyphrase-kept:${sa
  *  fifth Play) */
 const OFFER_AGAIN_MS = 7 * 86400_000;
 export const OFFER_TIMES = 3;
-interface Offer { asked: number; at: number }
+/** and once more, whatever the count and the week, once more than LATE_GAMES games were started here and more than
+ *  LATE_MS played (2026-11-03): a player who keeps playing on saves kept only here */
+const LATE_GAMES = 12, LATE_MS = 3 * 3600_000;
+/** asked: the offers counted against OFFER_TIMES; at: the last offer; late: the once-more one was made (or an offer
+ *  made past its numbers stood for it) */
+interface Offer { asked: number; at: number; late?: boolean }
+const lateDue = (o: Offer, games: number, played: number) => !o.late && games > LATE_GAMES && played > LATE_MS;
+const regularDue = (o: Offer) => o.asked < OFFER_TIMES && Date.now() - o.at >= OFFER_AGAIN_MS;
 /** the offers so far (before 2026-10-31 the key held a count of games, then 'asked' after the one offer) */
 function readOffer(v: string | null): Offer {
   if (v === 'asked') return { asked: 1, at: 0 };
-  try { const o = JSON.parse(v ?? '') as Partial<Offer> | null; if (typeof o?.asked === 'number') return { asked: o.asked, at: Number(o.at) || 0 }; }
+  try {
+    const o = JSON.parse(v ?? '') as Partial<Offer> | null;
+    if (typeof o?.asked === 'number') return { asked: o.asked, at: Number(o.at) || 0, late: o.late === true };
+  }
   catch { /* a count, or nothing */ }
   return { asked: 0, at: 0 };
 }
@@ -214,6 +225,9 @@ function stakeOf(here: Side, playedMs: number): HTMLElement {
 const para = (text: string) => Object.assign(document.createElement('p'), { textContent: text });
 
 const QUIT_FIRST = N('Quit the game first.');
+/** how long the box shows the whole passphrase (the eye, or Make) before its dots come back; typing in it starts the
+ *  wait again.  (2026-11-03: screenshots of the Saves tab, sent for help, had the phrase left shown in them.) */
+const SHOWN_MS = 30_000;
 
 export class VaultPanel {
   private sync: VaultSync | null = null;
@@ -221,6 +235,8 @@ export class VaultPanel {
   private owned = false;
   /** the box shows dots after the first 3 characters */
   private hidden = true;
+  /** shown, the dots come back at this (SHOWN_MS) */
+  private hideTimer: ReturnType<typeof setTimeout> | undefined;
   /** the box holds the linked keyphrase (not one typed in) */
   private holdsLink = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -251,12 +267,12 @@ export class VaultPanel {
     on('#vault-make', () => this.make());
     // shown, it is selected, and the linked keyphrase copied
     on('#vault-eye', async () => {
-      this.hidden = !this.hidden;
-      this.mask();
+      this.reveal(this.hidden);
       if (this.hidden || !this.input.value) return;
       this.input.focus(); this.input.select();
       if (!this.sync?.link) return;
-      try { await navigator.clipboard.writeText(this.input.value); this.msg(() => t('Copied.')); } catch { /* the selection is there to copy */ }
+      // (the Clipboard API only: the old way would take the selection away from the box)
+      try { await navigator.clipboard.writeText(this.input.value); copyToast(this.$('#vault-eye')); } catch { /* the selection is there to copy */ }
     });
     on('#vault-file', () => this.download());
     on('#vault-sync', () => this.syncNow());
@@ -269,6 +285,15 @@ export class VaultPanel {
     this.$<HTMLFormElement>('#vault-form').onsubmit = e => { e.preventDefault(); if (!this.sync?.link) void this.use(this.input.value); };
     // the dots follow the field's text and its scrolling
     for (const ev of ['input', 'scroll', 'keyup', 'select', 'pointerup', 'focus']) this.input.addEventListener(ev, () => this.mask());
+    this.input.addEventListener('input', () => { if (!this.hidden) this.reveal(true); });
+  }
+
+  /** the whole passphrase shown (for SHOWN_MS), or its dots */
+  private reveal(on: boolean) {
+    this.hidden = !on;
+    clearTimeout(this.hideTimer);
+    if (on) this.hideTimer = setTimeout(() => this.reveal(false), SHOWN_MS);
+    this.mask();
   }
 
   private $<T extends HTMLElement = HTMLElement>(sel: string) { return this.root.querySelector<T>(sel)!; }
@@ -364,7 +389,8 @@ export class VaultPanel {
     let was: string | null = null;
     try { was = localStorage.getItem(k); } catch { /* storage off */ }
     if (s.link) { if (was !== markOf(s.link.phrase)) this.keep(s.link.phrase); return; }
-    if ((await listProfiles(this.d.saveDir)).length) return;
+    // (a save folder that does not answer, savefs.ts missing: as one with profiles, nothing offered over them)
+    if ((await listProfiles(this.d.saveDir).catch(() => null))?.length !== 0) return;
     const ask = was === null, phrase = await keptPhrase(ask), p = phrase ? readPhrase(phrase) : null;
     if (!p || 'bad' in p) {
       if (ask) { mark('asked'); this.d.log(`[app] keyphrase: the browser gave ${phrase ? 'no passphrase' : 'none'} when asked: only taken without a question from now on`); }
@@ -433,7 +459,9 @@ export class VaultPanel {
       return !still || await still();
     };
     const copy = this.copying;                         // (Use the cloud's: the saves here kept with the take)
-    try { if (!await restoreVault(this.d.saveDir, r, now, copy?.files)) return false; }
+    // a take by itself (VaultSync.pull: only while the saves here are those it synced) is the one that may follow an
+    // older page's mend with this browser's covers (saves-ui.ts renamedHere)
+    try { if (!await restoreVault(this.d.saveDir, r, now, copy?.files, !!still && !copy)) return false; }
     catch (e) { if (copy) await this.loadReplaced().catch(() => {}); throw e; }
     this.keptNow(copy);
     this.mended = r;
@@ -612,21 +640,23 @@ export class VaultPanel {
   // ---- offered at Play (shell.ts askCloud) ----
 
   /** Play may offer cloud saves: this server keeps them, this tab owns the saves and has no keyphrase, and they were
-   *  offered fewer than OFFER_TIMES times, the last one OFFER_AGAIN_MS ago or more (with storage off: never, as no
-   *  link would be kept either). */
-  offerable(): boolean {
+   *  offered fewer than OFFER_TIMES times, the last one OFFER_AGAIN_MS ago or more, or the once-more offer is due
+   *  (games started and play here: playtime.ts; with storage off: never, as no link would be kept either). */
+  offerable(games: number, played: number): boolean {
     const s = this.sync;
     if (!s || s.link || s.state.s === 'working' || !this.d.owner()) return false;
-    try { const o = readOffer(localStorage.getItem(offerKey(this.d.saveDir))); return o.asked < OFFER_TIMES && Date.now() - o.at >= OFFER_AGAIN_MS; }
+    try { const o = readOffer(localStorage.getItem(offerKey(this.d.saveDir))); return regularDue(o) || lateDue(o, games, played); }
     catch { return false; }
   }
-  /** Play offered them now: the how-manieth time (of OFFER_TIMES) */
-  offered(): number {
+  /** Play offered them now: which offer, for the log ("2 of 3", or the once-more one) */
+  offered(games: number, played: number): string {
     try {
-      const k = offerKey(this.d.saveDir), o = readOffer(localStorage.getItem(k));
-      localStorage.setItem(k, JSON.stringify({ asked: o.asked + 1, at: Date.now() } satisfies Offer));
-      return o.asked + 1;
-    } catch { return 1; /* storage off */ }
+      const k = offerKey(this.d.saveDir), o = readOffer(localStorage.getItem(k)), regular = regularDue(o);
+      // (an offer past the once-more numbers stands for that one too: not asked again at the next Play)
+      const late = o.late || games > LATE_GAMES && played > LATE_MS;
+      localStorage.setItem(k, JSON.stringify({ asked: regular ? o.asked + 1 : o.asked, at: Date.now(), late } satisfies Offer));
+      return regular ? `${o.asked + 1} of ${OFFER_TIMES}` : `once more, ${games} games and ${Math.round(played / 3600_000)} h played here`;
+    } catch { return 'storage off'; }
   }
   /** what the saves here hold, for Play's question (stakeOf): playedMs, the play counted in this browser */
   async stake(playedMs: number): Promise<HTMLElement> { return stakeOf(sideOf(await this.files()), playedMs); }
@@ -653,6 +683,17 @@ export class VaultPanel {
   }
   /** a keyphrase is linked here (before `start`: one is kept here) */
   linked(): boolean { return this.sync ? !!this.sync.link : typeof this.load()?.phrase === 'string'; }
+  /**
+   * When the cloud's version of this browser's saves was saved, where its last sync went through: linked, the server
+   * has the keyphrase, no conflict, error or work under way, no send without an answer, nothing held back (shell.ts
+   * savesAdvice: only then may the player remove the site's data and take the saves back with the passphrase).  null:
+   * not so, or not known yet (before `start`).
+   */
+  clearable(): number | null {
+    const s = this.sync, l = s?.link;
+    if (!s || !l || l.gone || l.held || l.sent?.length || s.state.s !== 'synced') return null;
+    return l.saved;
+  }
   /** the line about the name this keyphrase claims (null: none); drawn again as the section shows (the name can be
    *  known before `start` set up the sync) */
   showClaim(name: string | null) {
@@ -674,9 +715,9 @@ export class VaultPanel {
     if (!this.sync || !this.d.owner()) return false;
     try {
       await this.sync.create();
-      this.hidden = false;
+      this.reveal(true);
       this.show();
-      this.msg(() => t('Passphrase made. Keep it safe: it is the only way back to these saves.'));
+      this.msg(() => t('Enter it on another device to sync your saves. Store it somewhere safe: it can\'t be recovered.'));
       this.d.log('[app] keyphrase: made one, the saves went to the server');
       if (this.sync.link) this.keep(this.sync.link.phrase);
       return true;
@@ -710,7 +751,7 @@ export class VaultPanel {
     p.textContent = text;
     for (const t of backupItems(r, true)) { const li = document.createElement('li'); li.textContent = t; ul.append(li); }
     body.append(p, ul);
-    if (!await this.d.confirm(title, body, ok, danger ?? (await listFiles(this.d.saveDir)).some(f => keeps(f.path)))) { this.msg(''); return false; }
+    if (!await this.d.confirm(title, body, ok, danger ?? (await listFiles(this.d.saveDir).catch(() => null))?.some(f => keeps(f.path)) ?? true)) { this.msg(''); return false; }
     if (this.d.busy()) { this.msg(() => t(QUIT_FIRST), true); return false; }
     let copy: Awaited<ReturnType<VaultPanel['replacedCopy']>>;
     try { copy = await this.replacedCopy(); }
@@ -757,7 +798,11 @@ export class VaultPanel {
   private async stop() {
     const s = this.sync;
     if (!s?.link) return;
-    if (!await this.d.confirm(t('Stop syncing here?'), t('Your saves stay here and in the cloud. To sync again, you need the passphrase.'), t('Stop syncing'))) return;
+    // (the claimed name stays the passphrase's: without it here, this browser plays with digits)
+    const name = this.claimed;
+    if (!await this.d.confirm(t('Stop syncing here?'), name
+      ? t('Your saves stay here and in the cloud. To sync again or play as {name}, you need the passphrase.', { name })
+      : t('Your saves stay here and in the cloud. To sync again, you need the passphrase.'), t('Stop syncing'))) return;
     const phrase = s.link.phrase;
     await s.forget().catch(() => {});
     // the keyphrase stays in the box, to keep or to load again (the job's end showed the box empty)
@@ -770,7 +815,11 @@ export class VaultPanel {
   private async remove() {
     const s = this.sync;
     if (!s?.link) return;
-    if (!await this.d.confirm(t('Delete your cloud saves?'), t('They are deleted from the server now, with the earlier copy. This browser keeps its saves; other browsers stop syncing.'),
+    // (the server frees the passphrase's claimed name with it: vault.rs release_names)
+    const name = this.claimed;
+    if (!await this.d.confirm(t('Delete your cloud saves?'), name
+      ? t('They are deleted from the server now, with the earlier copy, and {name} is no longer yours: anyone can claim it. This browser keeps its saves; other browsers stop syncing.', { name })
+      : t('They are deleted from the server now, with the earlier copy. This browser keeps its saves; other browsers stop syncing.'),
       t('Delete'), true)) return;
     try {
       await s.remove();
@@ -840,7 +889,7 @@ export class VaultPanel {
     }
     this.claimLine();
     const working = st.s === 'working';
-    // beside the heading: Enable cloud saving, or what it is doing, or when it last synced
+    // beside the heading: Turn on, or what it is doing, or when it last synced
     this.$('#vault-make').hidden = !!l || working;
     const note = this.$('#vault-when');
     note.hidden = !l && !working;

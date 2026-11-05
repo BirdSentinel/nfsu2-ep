@@ -10,6 +10,7 @@
 //        [--http-port 8643] [--base http://localhost:8623] [--timeout <s>] [--stagger <s>]
 //        [--env K=V ...] [--host-env K=V ...] [--join-env K=V ...] [--headed] [--bounce <s>]
 //        [--host-arg X ...] [--join-arg X ...]   more tools/gen_lan_race.py options, e.g. --join-arg --confirm-join
+//        [--joinN-arg X ...]   the same for instance N alone (2..6), e.g. its own --after lines
 //                    (a slow link: the joiner answers the game's "connection quality below average" question)
 //        [--impair delay=MS,jitter=MS,loss=PCT,reorder=PCT,hold=PCT,holdms=MS,seed=N]   (own server only: the
 //                    switch's --lan-impair, vlanhub.py's impairments on LAN play's frames; hold: a link held for
@@ -88,7 +89,7 @@ const NAMES = ['HOSTWEB', 'JOINWEB', 'JOINWEB3', 'JOINWEB4', 'JOINWEB5', 'JOINWE
 const gen = (role, name, car, extra) => execFileSync(PY, [path.join(REPO, 'tools/gen_lan_race.py'), role, '--name', name, '--car', String(car),
   '--races', String(RACES), ...extra], { encoding: 'utf8' });
 const scripts = [gen('host', NAMES[0], 0, [...MODES[MODE].h, ...opts('host-arg')])];
-for (let i = 1; i < PLAYERS; i++) scripts.push(gen('join', NAMES[i], i, [...MODES[MODE].j, ...opts('join-arg')]));
+for (let i = 1; i < PLAYERS; i++) scripts.push(gen('join', NAMES[i], i, [...MODES[MODE].j, ...opts('join-arg'), ...opts(`join${i + 1}-arg`)]));
 fs.writeFileSync(path.join(OUT, 'host.txt'), scripts[0]);
 fs.writeFileSync(path.join(OUT, 'join.txt'), scripts[1]);
 
@@ -159,12 +160,16 @@ async function start(i) {
   await page.route(`**${scriptPath(i)}`, r => r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body: scripts[i] }));
   if (WASM_OF.has(i + 1)) await page.route('**/game.wasm', r => r.fulfill({ status: 200, contentType: 'application/wasm', path: WASM_OF.get(i + 1) }));
   const plog = fs.createWriteStream(path.join(dir, 'page.log'));
-  const lines = [];
+  const lines = [], clk = [];
   const r = { dropAt: null, dropped: 0 };
   let exit = null;
   const w = (s) => plog.write(`${((Date.now() - t0) / 1000).toFixed(3)} ${s}\n`);
   page.on('console', m => {
     const t = m.text(); w(t);
+    // the instance's trace clock as it read it, and when the line came by this tool's monotonic clock (clock.csv):
+    // the least difference lines the instances' car traces up (tools/race_acc.py; their wall clocks can differ)
+    const ck = /\[ctclock\] (\d+\.\d+)/.exec(t);
+    if (ck) clk.push(`${performance.now().toFixed(3)},${ck[1]}`);
     const g = /^\[\d+!?\] ([^]*)$/.exec(t);
     if (g) lines.push(g[1]); else { const e = /^EXIT (-?\d+)$/.exec(t); if (e) exit = +e[1]; lines.push(t); }
     if (DROP && DROP[0] === i + 1 && !r.dropAt && /network race begins/.test(t)) {
@@ -186,7 +191,7 @@ async function start(i) {
   const timer = setInterval(async () => {
     try { const s = await page.evaluate(() => { const n = globalThis.nfsu2Net; return n ? { ...n.stats(), peers: n.peers } : null; }); if (s) w(`NETSTAT ${JSON.stringify(s)}`); } catch {}
   }, 10000);
-  Object.assign(r, { i, name: NAMES[i], dir, page, ctx, plog, lines, timer, exitCode: () => exit, done: null });
+  Object.assign(r, { i, name: NAMES[i], dir, page, ctx, plog, lines, clk, timer, exitCode: () => exit, done: null });
   r.done = page.waitForFunction(() => document.title === 'DONE' || window.__nfsu2?.phase === 'exited', null, { timeout: TMO, polling: 1000 })
     .then(() => 'done', () => 'timeout');
   inst.push(r);
@@ -210,6 +215,7 @@ for (const x of inst) {
   clearInterval(x.timer);
   if (res[x.i] === 'timeout') x.lines.push(`TIME LIMIT REACHED: lan-pair stopped the run after ${(TMO / 1000).toFixed(0)} s`);
   fs.writeFileSync(path.join(x.dir, 'log.txt'), x.lines.join('\n') + '\n');
+  fs.writeFileSync(path.join(x.dir, 'clock.csv'), 'arrived_ms,trace_s\n' + x.clk.map(s => s + '\n').join(''));
   if (x.dropped) { x.plog.end(); continue; }
   try {
     const txt = await x.page.evaluate(async (dir) => {

@@ -25,7 +25,11 @@ int host_status_slot(const char *name){
     int i = 0;
     for (; i < (int)g_st.count; i++) if (!strncmp(g_st.item[i].name, name, HOST_STATUS_NAME)) break;
     if (i == (int)g_st.count){
-        if (i >= HOST_STATUS_MAX){ pthread_mutex_unlock(&g_mu); return -1; }
+        if (i >= HOST_STATUS_MAX){
+            pthread_mutex_unlock(&g_mu);
+            fprintf(stderr, "[status] no room for \"%s\": all %d places taken, the page never sees it\n", name, HOST_STATUS_MAX);
+            return -1;
+        }
         __atomic_add_fetch(&g_st.seq, 1, __ATOMIC_RELEASE);
         strncpy(g_st.item[i].name, name, HOST_STATUS_NAME);
         g_st.item[i].value = 0;
@@ -192,9 +196,14 @@ static void touch_state(int drive){
 /* "sms": the text message of ours (sms.c) the game has in its inbox this
  * game, 0 none, so the page asks for it no more (web/src/app/playtime.ts) */
 int sms_delivered(void);
+/* "nocount": 1 while a countdown of the player's would not start where they
+ * are in free roam (roam_game_nocount: a car meet, and they have not stayed),
+ * so quick chat's picker dims it (web/src/app/quickchat.ts) */
+int roam_game_nocount(void);
 void status_web_frame(void){
-    static int slot = -2, last = -1, rslot = -2, rlast = -1, pslot = -2, plast = -1, sslot = -2, slast = -1;
-    if (slot == -2){ slot = host_status_slot("drive"); rslot = host_status_slot("rate"); pslot = host_status_slot("pause"); sslot = host_status_slot("sms"); }
+    static int slot = -2, last = -1, rslot = -2, rlast = -1, pslot = -2, plast = -1, sslot = -2, slast = -1, cslot = -2, clast = -1;
+    if (slot == -2){ slot = host_status_slot("drive"); rslot = host_status_slot("rate"); pslot = host_status_slot("pause"); sslot = host_status_slot("sms");
+                     cslot = host_status_slot("nocount"); }
     int v = drive_state();
     if (v != last && slot >= 0){ last = v; host_status_set(slot, v); }
     int r = hfr_rate_now();
@@ -203,6 +212,8 @@ void status_web_frame(void){
     if (p != plast && pslot >= 0){ plast = p; host_status_set(pslot, p); }
     int m = sms_delivered();
     if (m != slast && sslot >= 0){ slast = m; host_status_set(sslot, m); }
+    int nc = (v & 3) == 2 && roam_game_nocount();
+    if (nc != clast && cslot >= 0){ clast = nc; host_status_set(cslot, nc); }
     roam_state();
     touch_state(v);
 }

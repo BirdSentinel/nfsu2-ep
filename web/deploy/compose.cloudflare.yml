@@ -27,40 +27,40 @@ configs:
   caddyfile-cloudflare:
     content: |
       {
-      	admin off
-      	servers {
-      		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
-      		client_ip_headers CF-Connecting-IP
-      	}
+          admin off
+          servers {
+              trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+              client_ip_headers CF-Connecting-IP
+          }
       }
       http://${NFSU2_HOST:-} {
-      	header -Server
-      	redir https://{host}{uri} 308
+          header -Server
+          redir https://{host}{uri} 308
       }
       :80 {
-      	abort
+          abort
       }
       :443 {
-      	abort
+          abort
       }
       ${NFSU2_HOST:-} {
-      	tls {
-      		client_auth {
-      			mode require_and_verify
-      			trust_pool file /etc/caddy/cloudflare-origin-pull-ca.pem
-      		}
-      	}
-      	reverse_proxy 127.0.0.1:${NFSU2_HTTP_PORT:-8080} {
-      		header_up CF-Connecting-IP {client_ip}
-      		transport http {
-      			max_conns_per_host 111900
-      		}
-      	}
-      	header -Server
-      	header -Via
-      	handle_errors {
-      		header -Server
-      	}
+          tls {
+              client_auth {
+                  mode require_and_verify
+                  trust_pool file /etc/caddy/cloudflare-origin-pull-ca.pem
+              }
+          }
+          reverse_proxy 127.0.0.1:${NFSU2_HTTP_PORT:-8080} {
+              header_up CF-Connecting-IP {client_ip}
+              transport http {
+                  max_conns_per_host 127900
+              }
+          }
+          header -Server
+          header -Via
+          handle_errors {
+              header -Server
+          }
       }
   # web/server-rs/crates/headers/cloudflare-origin-pull-ca.pem: Cloudflare's origin-pull CA, from
   # https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem as of 2026-10-22 (valid until

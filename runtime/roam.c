@@ -79,6 +79,7 @@ void autotest_tap(unsigned dik, long frames);
 #define G_CARTYPES      0x008a1cccu   /* CarTypeInfo[], 0x890 bytes, +0 name */
 #define HOOK_MAINLOOP   0x00581475u
 
+uint32_t split_guest_addr(uint32_t a);   /* splitscreen.c: a script's 0x8900AC.. where this build keeps it */
 /* ---- expressions ---------------------------------------------------------- */
 static const char *xp;
 static uint32_t x_expr(void);
@@ -88,7 +89,7 @@ static uint32_t x_unary(void){
     x_ws();
     if (*xp == '*'){ xp++; return rd32(x_unary()); }
     if (*xp == '('){ xp++; uint32_t v = x_expr(); x_ws(); if (*xp == ')') xp++; return v; }
-    char *end; uint32_t v = (uint32_t)strtoul(xp, &end, 0); xp = end; return v;
+    char *end; uint32_t v = split_guest_addr((uint32_t)strtoul(xp, &end, 0)); xp = end; return v;
 }
 static uint32_t x_term(void){
     uint32_t v = x_unary();
@@ -606,6 +607,13 @@ void sub_005b2610(CPU *c){
     if (roam_game_ghost_pair(c->ecx)){ POP32(c->eip); return; }    /* thiscall, ret */
     roam_game_contact(c, sub_005b2610_orig);
 }
+/* The drive camera's test for a car its eye is in (0x44AC10, thiscall, ret
+ * 8, from 0x44B040 only, which lifts the eye over that car): with Ghost mode
+ * Everything the game's cars that pass through the player's car pass through
+ * the camera too (roam_game.c, roam_game_camera_cars) */
+void sub_0044ac10_orig(CPU *c);
+void roam_game_camera_cars(CPU *c, void (*orig)(CPU *));
+void sub_0044ac10(CPU *c){ roam_game_camera_cars(c, sub_0044ac10_orig); }
 /* The race's end, for the random encounters (0x42EFB0): new goals for the AI
  * range's cars that are out, through their brains; friends' cars have none
  * to give up and are left out (roam_game.c, roam_game_goals) */
@@ -808,19 +816,26 @@ void racehorn_frame(CPU *c);                  /* racehorn.c: horns in races betw
 void racenet_frame(CPU *c);                   /* racenet.c: how the other players' cars came in, at a race's end */
 void racenet_prestep(CPU *c);                 /*   and the cars' own places back before the world's step */
 void mprace_frame(CPU *c);                    /* mprace.c: a multiplayer race's trip from free roam and back */
+void mpcredit_frame(CPU *c);                  /* mpcredit.c: a multiplayer race's win that waits for the crib */
 void optslider_frame(CPU *c);                 /* optslider.c: our option sliders' copied parts (the pause menu's Horn Volume) */
 void drift_frame(CPU *c);                     /* drift.c: drift mode in free roam (F2) */
 void showoff_frame(CPU *c);                   /* showoff.c: the car's trunk, hood and doors open */
+void lightkey_frame(CPU *c);                  /* lightkey.c: the headlights on G (off, high beam), friends' too */
 void photo_frame(CPU *c);                     /* photo.c: photo mode (F12, the pause menu's Photo Mode) */
 void language_texts_frame(CPU *c);            /* language.c: texts of our own in the game's language table */
 void sms_frame(CPU *c);                       /* sms.c: a text message of ours on the game's phone */
 void hiddenraces_frame(void);                 /* hiddenraces.c: the career's hidden races on the map (show_hidden_races) */
+void visualrep_frame(void);                   /* visualrep.c: the visual rating by the stage (visual_rep_remover) */
+void visualrep_meter(CPU *c);                 /* visualrep.c: ... and no Visual Rating box in the shops */
 void carspot_frame(void);                     /* carspot.c: the career's kept spot, if no place, the new career's start (issue 55) */
+void walls_frame(void);                       /* walls.c: a car past the career's walls back on the roads it can reach */
 void savegame_frame(void);                    /* savegame.c: the pause menu's Save, once its save is over */
 void reads_frame(CPU *c);                     /* overrides.c: the streamer's reads and Loading screens, for the log */
 void intro_frame(CPU *c);                     /* intro.c: the title screen's line under the copyright */
 void roam_game_hud(CPU *c);                 /* its names over friends' cars */
 int roam_game_cmd(CPU *c, const char *args, long *wait_start);
+int coop_cmd(CPU *c, const char *args, long *wait_start);
+void coop_frame(CPU *c);
 /* the "virtual Windows friend" (roam_asipeer.c, only in out/nfsu2_asipeer):
  * the Windows plugin under Unicorn instead of roam_game.c */
 __attribute__((weak)) int roam_asipeer_frame(CPU *c){ (void)c; return 0; }
@@ -829,12 +844,15 @@ __attribute__((weak)) int roam_asipeer_cmd(CPU *c, const char *args, long *wait_
     fprintf(stderr, "[roam] asi: not in this build (ASIPEER=1 ./link.sh orig makes out/nfsu2_asipeer)\n"); return 1; }
 int roam_hook(CPU *c, uint32_t ip){
     switch (ip){
-    case HOOK_SITE(0x00581475): reads_frame(c); intro_frame(c); language_texts_frame(c); sms_frame(c); hiddenraces_frame(); carspot_frame(); mprace_frame(c); if (!roam_asipeer_frame(c)) roam_game_frame(c); racehorn_frame(c); racenet_frame(c); optslider_frame(c); drift_frame(c); showoff_frame(c); photo_frame(c); savegame_frame(); roam_frame(c); return 1;
+    case HOOK_SITE(0x00581475): reads_frame(c); intro_frame(c); language_texts_frame(c); sms_frame(c); hiddenraces_frame(); visualrep_frame(); carspot_frame(); walls_frame(); mprace_frame(c); mpcredit_frame(c); if (!roam_asipeer_frame(c)) roam_game_frame(c); racehorn_frame(c); racenet_frame(c); optslider_frame(c); drift_frame(c); showoff_frame(c); lightkey_frame(c); photo_frame(c); savegame_frame(); coop_frame(c); roam_frame(c); return 1;
     /* Player::Update's HUD step (0x600590), behind its call of the HUD
      * update (0x4EC5A0), where the game places its own LAN race labels */
     case HOOK_SITE(0x006005e0): roam_game_hud(c); return 1;
     /* the main loop's call of World::DoTimestep (0x609CE0), its only one */
     case HOOK_SITE(0x00581407): racenet_prestep(c); return 1;
+    /* the customization shops' push of the Visual Rating box (0x557EC0), at
+     * its test of "up already?" (0x52CF60's al) */
+    case HOOK_SITE(0x00557ed0): visualrep_meter(c); return 1;
     }
     return 0;
 }
@@ -911,6 +929,7 @@ int roam_cmd(CPU *c, const char *line, long *wait_start){
     long f = autotest_frame();
     if (!strcasecmp(sub, "mp")) return roam_game_cmd(c, rest, wait_start);
     if (!strcasecmp(sub, "asi")) return roam_asipeer_cmd(c, rest, wait_start);
+    if (!strcasecmp(sub, "coop")) return coop_cmd(c, rest, wait_start);
     if (!strcasecmp(sub, "racesay")){             /* quick chat in a race between players, as picked on the page */
         void racehorn_test_say(int phrase);
         racehorn_test_say(atoi(a1));

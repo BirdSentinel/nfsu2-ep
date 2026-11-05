@@ -106,13 +106,15 @@ pub fn sha256_source(text: &str) -> String {
 /// The Permissions-Policy.  Only what the game uses: game controllers, full screen, the keyboard layout
 /// (key names in the settings; Keyboard Lock itself has no policy and needs full screen), sound without a
 /// click first, the screen kept on while a game runs (a controller's buttons do not keep every system's
-/// screen awake), and the motion sensor for the touch controls' tilt steering (the device orientation events
-/// need accelerometer and gyroscope).  The rest is switched off for this page and anything it could embed.
+/// screen awake), the motion sensor for the touch controls' tilt steering (the device orientation events
+/// need accelerometer and gyroscope), and WebHID for Valve's controllers, which are no gamepads to the
+/// browsers (web/src/input/steampad.ts; only those the player picked in the browser's list).  The rest is
+/// switched off for this page and anything it could embed.
 pub const PERMISSIONS_POLICY: &str = concat!(
     "gamepad=(self), fullscreen=(self), keyboard-map=(self), autoplay=(self), cross-origin-isolated=(self), ",
-    "screen-wake-lock=(self), accelerometer=(self), gyroscope=(self), ",
+    "screen-wake-lock=(self), accelerometer=(self), gyroscope=(self), hid=(self), ",
     "bluetooth=(), browsing-topics=(), camera=(), clipboard-read=(), display-capture=(), ",
-    "encrypted-media=(), geolocation=(), hid=(), idle-detection=(), local-fonts=(), ",
+    "encrypted-media=(), geolocation=(), idle-detection=(), local-fonts=(), ",
     "magnetometer=(), microphone=(), midi=(), payment=(), publickey-credentials-get=(), ",
     "serial=(), usb=(), window-management=(), xr-spatial-tracking=()",
 );
@@ -601,6 +603,22 @@ pub fn client_ip(q: &impl Req, trust: &ProxyTrust, header: &str) -> String {
         }
     }
     peer.to_ascii_lowercase()
+}
+
+/// The client's country as a trusted proxy names it: Cloudflare's CF-IPCountry (its proxy and cloudflared set it from
+/// the client's address and replace what a client sent), two letters of ISO 3166-1, upper case.  None from a peer that
+/// is not trusted, and for "XX" (no country known) and "T1" (Tor).  Only the server's counts read it (nfsu2-lan
+/// paths.rs) and /country, which tells the browser its own (the start page's Your flag list), never a rule.
+pub fn client_country(q: &impl Req, trust: &ProxyTrust) -> Option<[u8; 2]> {
+    if !trust.trusts(q.peer()) {
+        return None;
+    }
+    let c = js::trim(q.header("cf-ipcountry")?).as_bytes();
+    if c.len() != 2 || !c.iter().all(u8::is_ascii_alphabetic) {
+        return None;
+    }
+    let c = [c[0].to_ascii_uppercase(), c[1].to_ascii_uppercase()];
+    (&c != b"XX" && &c != b"T1").then_some(c)
 }
 
 /// The browser reached us over https: directly, or through a trusted proxy that says so (X-Forwarded-Proto, else

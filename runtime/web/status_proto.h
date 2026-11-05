@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define HOST_STATUS_MAGIC 0x31545453u      /* "STT1" */
-#define HOST_STATUS_MAX   32
+#define HOST_STATUS_MAX   48         /* 32 until 2026-11-04: by then 35 names, so photo mode's last ones never showed */
 #define HOST_STATUS_NAME  16
 
 typedef struct { char name[HOST_STATUS_NAME]; double value; } HostStatusItem;   /* 24 bytes */
@@ -32,7 +32,8 @@ typedef struct {
 } HostStatus;
 
 _Static_assert(sizeof(HostStatusItem) == 24, "page layout (status.ts)");
-_Static_assert(sizeof(HostStatus) == 16 + 24 * HOST_STATUS_MAX + sizeof(HostStatusRadio), "page layout (status.ts)");
+/* the radio's words right after the table (radio-link.ts); the block may end in padding, the doubles' alignment */
+_Static_assert(__builtin_offsetof(HostStatus, radio) == 16 + 24 * HOST_STATUS_MAX, "page layout (status.ts)");
 
 /* status_web.c */
 int  host_status_slot(const char *name);          /* index of a named counter (created on first use), -1 if full */

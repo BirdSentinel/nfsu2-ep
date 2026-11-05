@@ -3,13 +3,13 @@
 // overlay as a zip (profiles, registry.txt, settings.ini, screenshots) and
 // restoring one, or adding the PC game's profiles beside the ones here
 // (readBackup tells them apart), and the F12 screenshots (shots.ts); a keyphrase's saves come in as a
-// backup does (readVault, restoreVault: vault-ui.ts).  And the Other tab's game data on
+// backup does (readVault, restoreVault: vault-ui.ts).  And the Game tab's game data on
 // this device: how much of it, all of it downloaded ahead (predownload.ts), or
 // deleted.  The game data is never part of a backup and never written back:
 // it stays on the server.
 
-import { cacheBytes, clearCache, filesOf, pruneSaveDir, UndoPending, writeTogether, type BesideFile, isScreenshot, listFiles, listProfiles, PROFILES_DIR, readBytes, readText, writeFile, type Profile } from './savefs';
-import { AUTOSAVE_SEEN, coverOf, fixedName, isProfileFile, isProfileName, modCars, NAME_MAX, profileInside, renameProfile, sealed, withName, type RenameFiles } from './profile';
+import { cacheBytes, clearCache, filesOf, pruneSaveDir, UndoPending, writeTogether, type BesideFile, isScreenshot, listFiles, listProfiles, PROFILES_DIR, readBytes, readText, UNREADABLE, writeFile, type Entry, type Profile } from './savefs';
+import { AUTOSAVE_SEEN, coverOf, fixedName, GIVE_MAX, isGivenName, isProfileFile, isProfileName, mendedBefore, modCars, profileInside, renameProfile, deleteProfile, sameCareer, sealed, withName, type RenameFiles } from './profile';
 import { completeSave } from './complete-save';
 import { archiveSave, listArchives, restoreArchive, deleteArchive, type SaveArchive } from './save-archives';
 import { listZip, unzip, zip, ZipError, type ZipEntry } from './zip';
@@ -17,7 +17,9 @@ import { downloadBlob, stamp } from './logs';
 import { fmtBytes } from './checks';
 import { resolveEnv, withDevice } from './settings';
 import { gameDataKept, type DownloadState, type DownloadStatus, type Predownload } from './predownload';
-import { ScreenshotsPart } from './shots';
+import { ScreenshotsPart, when } from './shots';
+import { iconButton, PENCIL, TRASH } from './settings-ui';
+import { playedAtLeast, playedMs, playedText } from './playtime';
 import { GAMEFILE, isCover, keeps, kept } from './vault';
 import { dateLocale, listOf, live, N, t, tn, tvars, type Msg } from './i18n';
 
@@ -128,9 +130,11 @@ export type FileIn = { path: string; data: Uint8Array; mtime?: number };
 const lower = (s: string) => s.toLowerCase();
 
 /** A zip of this page's backup or of the PC game's profiles, or a profile's own file (fileName: its name, for the
- *  messages); here: the profiles in this browser, whose names a profile added beside them with its name mended does not take. */
+ *  messages); here: the profiles in this browser, whose names a profile added beside them with its name mended does not take.
+ *  A name the game's own box does not make (isGivenName: a longer one from NFSU2 Extra Options, or another browser's) is
+ *  mended, so the game lists it; cloud saves keep every name (readVault). */
 export async function readBackup(buf: Uint8Array, fileName = 'the file', here: string[] = []): Promise<Restore> {
-  if (isProfileFile(buf)) return finalPaths(profilesIn([{ path: fileName, data: buf }], [], here));
+  if (isProfileFile(buf)) return finalPaths(profilesIn([{ path: fileName, data: buf }], [], here, isGivenName));
   // a backup zipped from a folder ("saves/NFS Underground 2/...") still restores: strip one common top folder
   const listed = await listZip(buf);
   const names = listed.map(n => entryPath(n, true)).filter((x): x is string => !!x);
@@ -146,15 +150,15 @@ export async function readBackup(buf: Uint8Array, fileName = 'the file', here: s
     return (other += size) <= MAX_OTHER || ((other -= size), false);
   }, refused);
   const files = all.map(e => ({ path: local(e.name)!, data: e.data, mtime: e.mtime }));
-  return finalPaths(files.some(e => e.path === 'registry.txt' || e.path === 'settings.ini') ? backupIn(files, refused) : profilesIn(files, refused, here));
+  return finalPaths(files.some(e => e.path === 'registry.txt' || e.path === 'settings.ini') ? backupIn(files, refused, isGivenName) : profilesIn(files, refused, here, isGivenName));
 }
 
 /**
  * A backup of this page's: every entry, but a profile the game would not load and its cover shoots.  A profile whose
- * only fault is the name inside (one the game's field does not make, or not its folder's) comes in under fixedName's
- * name, with its folder's other files and its cover shoots.
+ * only fault is the name inside (not one `takes`, or not its folder's) comes in under fixedName's name, with its
+ * folder's other files and its cover shoots.
  */
-function backupIn(files: FileIn[], skipped: string[]): Restore {
+function backupIn(files: FileIn[], skipped: string[], takes: (name: string) => boolean = isProfileName): Restore {
   const out: Restore = { kind: 'backup', entries: [], profiles: [], skipped, refused: [], modded: [], edited: [], repaired: [] };
   // by each profile's folder as it is (two may differ in case only: each its own)
   const gone = new Set<string>(), moved = new Map<string, string>();
@@ -163,7 +167,7 @@ function backupIn(files: FileIn[], skipped: string[]): Restore {
   for (const e of mains) {
     const folder = e.path.split('/')[1], r = profileInside(e.data);
     if ('bad' in r) { out.refused.push({ name: folder, why: r.bad }); gone.add(folder); continue; }
-    if (!isProfileName(r.inside) || lower(r.inside) !== lower(folder)) { mend.push({ e, folder, inside: r.inside, edited: r.edited }); continue; }
+    if (!takes(r.inside) || lower(r.inside) !== lower(folder)) { mend.push({ e, folder, inside: r.inside, edited: r.edited }); continue; }
     out.profiles.push(folder);
     if (r.edited) { out.edited.push(folder); e.data = sealed(e.data); }
     if (modCars(e.data)) out.modded.push(folder);
@@ -206,7 +210,7 @@ function backupIn(files: FileIn[], skipped: string[]): Restore {
  * One whose only fault is the name inside (one the game's field does not make) comes
  * in under fixedName's name, which neither those nor the profiles here have.
  */
-function profilesIn(files: FileIn[], skipped: string[], here: string[] = []): Restore {
+function profilesIn(files: FileIn[], skipped: string[], here: string[] = [], takes: (name: string) => boolean = isProfileName): Restore {
   const out: Restore = { kind: 'profiles', entries: [], profiles: [], skipped, refused: [], modded: [], edited: [], repaired: [] };
   const found = new Map<string, FileIn & { name: string; edited: boolean; mended?: boolean }>();
   const mend: (FileIn & { own: string; inside: string; edited: boolean })[] = [];
@@ -218,7 +222,7 @@ function profilesIn(files: FileIn[], skipped: string[], here: string[] = []): Re
     if (!isProfileFile(e.data)) { out.skipped.push(e.path); continue; }
     const r = profileInside(e.data);
     if ('bad' in r) out.refused.push({ name: folder || file, why: r.bad });
-    else if (!isProfileName(r.inside)) mend.push({ ...e, own: file, inside: r.inside, edited: r.edited });
+    else if (!takes(r.inside)) mend.push({ ...e, own: file, inside: r.inside, edited: r.edited });
     else if (found.has(lower(r.inside))) out.skipped.push(e.path);          // a second copy of one
     else found.set(lower(r.inside), { ...e, name: r.inside, edited: r.edited });
   }
@@ -305,23 +309,65 @@ function restoredOf(files: FileIn[]) {
 export function profilesComing(files: FileIn[]): string[] { return restoredOf(files).profiles; }
 
 /**
+ * The profiles here that a version brings under another name, each with that name: renamed in another browser
+ * (profile.ts renameProfile) or mended there by a page of before 2026-11 (mendedBefore: it renamed a name of up to 15
+ * with spaces), so that this browser's own covers of it (a keyphrase keeps none) go with it instead of going.  Of the
+ * profiles here with covers that the version does not have, each goes with one it has that is not here: the same
+ * career whatever the name (sameCareer: renamed, not played since); and on a take by itself of the link's own newer
+ * version (auto), the name an older page makes of it, when exactly one of those here and one of the version's fit
+ * each other (two names here with the same first 7 letters and digits: the older page's order decides, unknown here).
+ * Nothing else: careers of different players hold mostly the same bytes, so a profile deleted there, one played
+ * since its rename there, or another keyphrase's (Load) never takes a cover here; those go, as they did.
+ */
+async function renamedHere(saveDir: string, here: { path: string }[], r: Restore, stays: Set<string>, auto: boolean): Promise<Map<string, string>> {
+  const out = new Map<string, string>(), names = new Set(r.profiles.map(lower));
+  const mains = here.map(f => f.path.split('/')).filter(s => s.length === 3 && s[0] === PROFILES_DIR && lower(s[1]) === lower(s[2]) && !coverOf(s[1]));
+  const withCovers = new Set(here.map(f => coverOf(f.path.split('/')[1] ?? '')?.profile).filter((p): p is string => !!p).map(lower));
+  const gone = mains.filter(s => !names.has(lower(s[1])) && !stays.has(s[1]));
+  const hereNames = new Set(mains.map(s => lower(s[1])));
+  const fresh = r.profiles.filter(p => !hereNames.has(lower(p)));
+  if (!gone.some(s => withCovers.has(lower(s[1]))) || !fresh.length) return out;
+  const entry = (p: string) => r.entries.find(e => e.path === `${PROFILES_DIR}/${p}/${p}`)?.data;
+  const left = new Set(fresh);
+  const pair = (g: string, p: string) => { out.set(g, p); left.delete(p); };
+  for (const s of gone) {                                   // the same career
+    const mine = await readBytes(saveDir, s.join('/')).catch(() => null);
+    const p = mine && [...left].find(q => { const d = entry(q); return !!d && sameCareer(mine, d); });
+    if (p) pair(s[1], p);
+  }
+  if (auto) for (const s of gone) {                         // an older page's mend, when nothing else fits it either way
+    if (out.has(s[1])) continue;
+    const fits = [...left].filter(q => mendedBefore(s[1], q));
+    if (fits.length === 1 && gone.filter(g => !out.has(g[1]) && mendedBefore(g[1], fits[0])).length === 1) pair(s[1], fits[0]);
+  }
+  for (const g of [...out.keys()]) if (!withCovers.has(lower(g))) out.delete(g);
+  return out;
+}
+
+/**
  * readVault's saves in place of the ones here: everything goes but what a keyphrase does not keep (vault.ts kept()):
  * the screenshots (and a test's input script), the DVD and magazine covers of the profiles they bring (those of a
- * profile whose name the restore mends under its new name), the game's graphics options, the LAN server's file, and
- * the device's own settings, which settings.ini keeps from the one here (settings.ts withDevice).  Their files are
- * written first, then what they replace goes: a write that fails (the browser's storage full) leaves the saves here.
+ * profile whose name the restore mends, or that the version brings under another name (renamedHere), under its new
+ * name), the game's graphics options, the LAN server's file, and the device's own settings, which settings.ini keeps
+ * from the one here (settings.ts withDevice).  Their files are written first, then what they replace goes: a write
+ * that fails (the browser's storage full) leaves the saves here.  auto: a take by itself of the link's newer version
+ * (VaultSync.pull, the one that passes still), not a keyphrase loaded, Use the cloud's or Put back.
  */
-export function restoreVault(saveDir: string, r: Restore, still?: () => Promise<boolean>, beside: BesideFile[] = []): Promise<boolean> {
+export function restoreVault(saveDir: string, r: Restore, still?: () => Promise<boolean>, beside: BesideFile[] = [], auto = still !== undefined): Promise<boolean> {
   return oneWriter(async () => {
     if (still && !await still()) return false;             // (the saves here changed since it was decided: VaultSync.take)
     const names = new Set(r.profiles.map(lower)), dec = new TextDecoder(), mended = new Map(r.repaired.map(x => [x.name, x.to]));
     const ini = r.entries.find(e => e.path === 'settings.ini');
     const settings = withDevice(ini ? dec.decode(ini.data) : null, await readText(saveDir, 'settings.ini'));
     const here = await listFiles(saveDir), files: FileIn[] = [];
+    // a profile it leaves out (one this game cannot load: 'drops') stays here, its covers too
+    const stays = new Set(r.refused.map(x => x.name));
+    for (const p of r.skipped) { const s = p.split('/'); if (s.length === 3 && s[0] === PROFILES_DIR && lower(s[1]) === lower(s[2])) stays.add(s[1]); }
+    for (const [from, to] of await renamedHere(saveDir, here, r, stays, auto)) if (!mended.has(from)) mended.set(from, to);
     // every folder here and of the version: a cover moved under a mended profile's name takes the next free number
     const folders = new Set([...here.map(f => f.path), ...r.entries.map(e => e.path)].map(p => p.split('/'))
       .filter(s => s.length >= 3 && s[0] === PROFILES_DIR).map(s => s[1]));
-    for (const f of here) {                                  // the covers here of a profile it mends, renamed
+    for (const f of here) {                                  // the covers here of a profile it mends or renames, renamed
       const s = f.path.split('/'), c = s.length === 3 && s[0] === PROFILES_DIR ? coverOf(s[1]) : null, to = c && mended.get(c.profile);
       if (!c || !to) continue;
       const [kind, num] = [c.cover.replace(/ \d+$/, ''), +c.cover.replace(/^\D+/, '')];
@@ -333,9 +379,8 @@ export function restoreVault(saveDir: string, r: Restore, still?: () => Promise<
     files.push(...r.entries.filter(e => e !== ini));
     if (settings !== null) files.push({ path: 'settings.ini', data: new TextEncoder().encode(settings) });
     await writeTogether(saveDir, files, beside);
-    // what it replaces goes; a profile it leaves out (one this game cannot load: 'drops') stays here, its covers too
-    const written = new Set(files.map(f => f.path)), stays = new Set(r.refused.map(x => x.name));
-    for (const p of r.skipped) { const s = p.split('/'); if (s.length === 3 && s[0] === PROFILES_DIR && lower(s[1]) === lower(s[2])) stays.add(s[1]); }
+    // what it replaces goes, but what stays (above)
+    const written = new Set(files.map(f => f.path));
     await pruneSaveDir(saveDir, path => {
       const s = path.split('/'), of = s.length >= 3 && s[0] === PROFILES_DIR ? coverOf(s[1])?.profile ?? s[1] : null;
       return written.has(path) || isScreenshot(path) || path === 'autotest-script.txt' || path === 'registry.txt' || path === GAMEFILE ||
@@ -442,16 +487,24 @@ export function addProfiles(fs: RenameFiles, r: Restore): Promise<void> {
 async function addProfilesNow(fs: RenameFiles, r: Restore) {
   const names = new Set(r.profiles.map(lower));
   const written = new Set(r.entries.map(e => e.path.split('/')[1]));
-  const old = new Set<string>();
+  const paths = new Set(r.entries.map(e => e.path));
+  const old = new Set<string>(), stale: string[] = [];
+  // (read before anything is written: one that does not read refuses the restore whole)
+  const seen = await fs.readText(AUTOSAVE_SEEN);
   for (const { path } of await fs.listFiles()) {
     const s = path.split('/');
-    if (s.length >= 3 && s[0] === PROFILES_DIR && names.has(lower(coverOf(s[1])?.profile ?? s[1])) && !written.has(s[1])) old.add(s[1]);
+    if (s.length < 3 || s[0] !== PROFILES_DIR || !names.has(lower(coverOf(s[1])?.profile ?? s[1]))) continue;
+    if (!written.has(s[1])) old.add(s[1]);
+    // a folder of the same name, written over: the old profile's MPWINS.DAT goes too, if the new one brings none (the
+    // old career's wins waiting for its garage would go to the new one's; a GARAGE.DAT has its fingerprint for this)
+    else if (!paths.has(path) && lower(s[2]) === 'mpwins.dat') stale.push(path);
   }
   for (const e of r.entries) await fs.writeFile(e.path, e.data);
   for (const f of old) await fs.remove(`${PROFILES_DIR}/${f}`);
-  const seen = await fs.readText(AUTOSAVE_SEEN);
+  for (const p of stale) await fs.remove(p);
   const kept = seen?.split('\n').filter(l => !names.has(lower(l.trim()))).join('\n');
-  if (seen != null && kept !== seen) await fs.writeFile(AUTOSAVE_SEEN, kept!);
+  // (not written: the page's Autosave leaves these profiles' Save choice as it is; they are in either way)
+  if (seen != null && kept !== seen) await fs.writeFile(AUTOSAVE_SEEN, kept!).catch(() => {});
 }
 
 /** "about 3 min left" */
@@ -462,6 +515,7 @@ function eta(s: number): string {
   return t('about {n} h left', { n: (s / 3600).toFixed(1) });
 }
 const QUIT_TO_CHANGE = N('Quit the game (or close the other tab that runs it) to change the game data.');
+const QUIT_TO_DELETE = N('Quit the game (or close the other tab that runs it) to delete a profile.');
 const QUIT_TO_RENAME = N('Quit the game (or close the other tab that runs it) to rename a profile or restore a backup.');
 
 export class SavesPanel {
@@ -475,7 +529,7 @@ export class SavesPanel {
     };
     dataPanel.querySelector<HTMLButtonElement>('#clear-cache')!.onclick = () => void this.doClearCache();
     dataPanel.querySelector<HTMLButtonElement>('#fetch-all')!.onclick = () => void this.doDownload();
-    this.shots = new ScreenshotsPart(root, { saveDir: deps.saveDir, confirm: deps.confirm, changed: () => void this.refresh() });
+    this.shots = new ScreenshotsPart(root, { saveDir: deps.saveDir, confirm: deps.confirm, changed: () => void this.refresh(), say: text => this.msg(text) });
   }
 
   private shots: ScreenshotsPart;
@@ -582,14 +636,19 @@ export class SavesPanel {
 
   /** Show the profiles, the screenshots and the downloaded game data as they are now. */
   async refresh() {
-    const files = await listFiles(this.deps.saveDir);
+    let files: Entry[];
+    // a save folder that does not answer (savefs.ts missing): said, and what is shown stays (never "no profiles")
+    try { files = await listFiles(this.deps.saveDir); }
+    catch (e) { this.msg(() => t(UNREADABLE, { error: String(e) }), UNREADABLE); return; }
+    if (this.said.saves === UNREADABLE) this.msg('');
     this.profiles = await listProfiles(this.deps.saveDir, files);
     this.showArchives(await listArchives(this.deps.saveDir));
     this.shots.show(files.filter(f => isScreenshot(f.path)));
+    this.showPlayed();
     const busy = this.deps.busy();
     // a name being typed stays as it is (the list is shown again when the edit ends)
     if (!this.profiles.some(p => p.name === this.renaming)) { this.renaming = null; this.showProfiles(); }
-    for (const b of this.root.querySelectorAll<HTMLButtonElement>('.profiles .rename-btn, .profiles .archive-btn, .profiles .renaming [type="submit"]')) b.disabled = busy || this.archiveWorking;
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>('.profiles .rename-btn, .profiles .archive-btn, .profiles .delete-btn, .profiles .renaming [type="submit"]')) b.disabled = busy || this.archiveWorking;
     this.root.querySelector<HTMLLabelElement>('.file-btn')!.toggleAttribute('aria-disabled', busy);
     this.root.querySelector<HTMLInputElement>('#import')!.disabled = busy;
     this.root.querySelector<HTMLButtonElement>('#complete-save-create')!.disabled = busy || this.creatingComplete;
@@ -603,10 +662,18 @@ export class SavesPanel {
     this.root.dataset.files = String(files.length);
     if (this.deps.download.running) { this.showData(); return; }     // it counts as it goes
     const n = ++this.counted;
-    const [kept, data] = await Promise.all([cacheBytes(), gameDataKept(this.deps.download.language(), this.deps.download.texpack()).catch(() => null)]);
+    const [kept, data] = await Promise.all([cacheBytes(), gameDataKept(this.deps.download.language(), this.deps.download.packs()).catch(() => null)]);
     if (n !== this.counted) return;
     this.kept = kept; this.data = data;
     this.showData();
+  }
+
+  /** the play counted in this browser (playtime.ts), beside the Profiles heading; nothing under a minute.  "At least" where the
+   *  count began before it counted all play */
+  private showPlayed() {
+    const el = this.root.querySelector<HTMLElement>('#played')!, ms = playedMs(), least = playedAtLeast();
+    el.hidden = !playedText(ms);
+    live(el, () => least ? t('at least {time} played', { time: playedText(ms) }) : t('{time} played', { time: playedText(ms) }));
   }
 
   /** The download's progress (Predownload's onChange), or what is kept when none runs. */
@@ -652,11 +719,13 @@ export class SavesPanel {
       info.textContent = t('Nothing here yet: the game downloads data as it needs it. Preload it now so loading never waits on the network.');
   }
 
-  /** The profiles, each with its Rename button, or the name being edited. */
+  /** The profiles, each with its Rename and Delete icons, or the name being edited; how to save in the game while
+   *  there is none. */
   private showProfiles() {
     const ul = this.root.querySelector('#profiles')!, busy = this.deps.busy();
     let focus: HTMLElement | null = null;
     ul.replaceChildren();
+    this.root.querySelector<HTMLElement>('#save-how')!.hidden = this.profiles.length > 0;
     if (!this.profiles.length) {
       const li = document.createElement('li'); li.className = 'empty';
       li.textContent = t('No profiles yet. Create one in the game.');
@@ -667,7 +736,7 @@ export class SavesPanel {
       if (p.name === this.renaming) {
         const { form, input } = this.renameForm(p.name, busy);
         const help = document.createElement('p'); help.className = 'hint'; help.id = 'rename-help';
-        help.textContent = t('Letters and digits, up to {n}, as in the game.', { n: NAME_MAX });
+        help.textContent = t('Letters and digits, up to {n}, as in the game.', { n: GIVE_MAX });
         const m = document.createElement('p'); m.className = 'msg warn'; m.id = 'rename-msg'; m.setAttribute('role', 'alert');
         li.className = 'renaming'; li.append(form, help, m); ul.append(li);
         focus = input;
@@ -675,16 +744,18 @@ export class SavesPanel {
       }
       const n = document.createElement('span'); n.className = 'name'; n.textContent = p.name;
       const m = document.createElement('span'); m.className = 'meta';
-      m.textContent = t('saved {when}, {size}', { when: new Date(p.mtime).toLocaleString(dateLocale()), size: fmtBytes(p.size) });
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'text-btn rename-btn'; b.textContent = t('Rename');
-      b.setAttribute('aria-label', t('Rename {name}', { name: p.name })); b.disabled = busy;
+      m.textContent = when(p.mtime);
+      const b = iconButton('rename-btn', t('Rename {name}', { name: p.name }), PENCIL); b.disabled = busy;
       b.onclick = () => { this.renaming = p.name; this.showProfiles(); };
+      const d = iconButton('delete-btn', t('Delete {name}', { name: p.name }), TRASH); d.disabled = busy;
+      d.onclick = () => void this.doDelete(p.name);
       if (p.name === this.focusName) focus = b;
       const archive = document.createElement('button'); archive.type = 'button'; archive.className = 'text-btn archive-btn';
       archive.textContent = t('Archive'); archive.setAttribute('aria-label', t('Archive {name}', { name: p.name }));
       archive.disabled = busy || this.archiveWorking;
       archive.onclick = () => void this.archiveAction('archive', p.name);
-      li.append(n, m, b, archive); ul.append(li);
+      const acts = document.createElement('span'); acts.className = 'acts'; acts.append(b, d, archive);
+      li.append(n, m, acts); ul.append(li);
     }
     this.focusName = null;
     if (focus) { focus.focus(); if (focus instanceof HTMLInputElement) focus.select(); }
@@ -693,7 +764,7 @@ export class SavesPanel {
   private renameForm(name: string, busy: boolean) {
     const form = document.createElement('form'); form.className = 'row';
     const input = document.createElement('input');
-    input.type = 'text'; input.value = name; input.maxLength = NAME_MAX; input.spellcheck = false; input.autocomplete = 'off';
+    input.type = 'text'; input.value = name; input.maxLength = GIVE_MAX; input.spellcheck = false; input.autocomplete = 'off';
     input.setAttribute('aria-label', t('New name for {name}', { name })); input.setAttribute('aria-describedby', 'rename-help rename-msg');
     // what the game's field keeps: other characters never appear
     input.oninput = () => {
@@ -726,6 +797,21 @@ export class SavesPanel {
     if ('refused' in r) { ok.disabled = this.deps.busy(); say(r.refused); return; }
     this.renaming = null; this.focusName = to;
     this.msg(() => t('Renamed {from} to {to}.', { from, to }));
+    this.deps.onChanged?.();
+    await this.refresh();
+  }
+
+  /** A profile and its cover shoots out of this browser, after a question (a Delete that is not the default). */
+  private async doDelete(name: string) {
+    if (this.deps.busy()) { this.msg(() => t(QUIT_TO_DELETE)); return; }
+    if (!await this.deps.confirm(t('Delete {name}?', { name }),
+      t('Its career and cars are deleted, here and in cloud saves. Download backup first to keep a copy.'), t('Delete'), true)) return;
+    if (this.deps.busy()) { this.msg(() => t(QUIT_TO_DELETE)); return; }
+    let r: { folders: number };
+    // (stopped halfway: its covers may have gone, the profile never before them; the cloud is told either way)
+    try { r = await this.write(oneWriter(() => deleteProfile(filesOf(this.deps.saveDir), PROFILES_DIR, name))); }
+    catch (err) { this.msg(() => t('Deleting {name} stopped: {error}', { name, error: String(err) })); this.deps.onChanged?.(); await this.refresh(); return; }
+    this.msg(() => r.folders ? t('Deleted {name}.', { name }) : t('There is no profile {name} in this browser.', { name }));
     this.deps.onChanged?.();
     await this.refresh();
   }
