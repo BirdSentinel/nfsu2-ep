@@ -5660,6 +5660,44 @@ static void spots_read(CPU *c, int64_t host){
 }
 #endif
 
+/* Add multiplayer-only starts to the native event-effect selection (0x605780).
+ * This is a visual list, NOT Career's open events: neither unlocks nor Engage
+ * change. The native code clears it each frame and owns creation, animation,
+ * distance culling and destruction of the floating icon AND ground ring.
+ * One nearest trigger per effect type, including the existing career events.
+ * Called at 0x605BCC, after selection and before 0x6054B0 updates the effects.
+ * No guest calls here: the hook must preserve every register and flag. */
+void roam_game_event_effects(void){
+#if MPRACES
+    if (!O.on || !g_net_ok || !g_in_roam || !rd32(G_CAREER + C_STAGE) || rd32(G_CAREER + C_GUIDED)) return;
+    uint32_t me = player_car();
+    if (!me || !ok(me + 0x60u, 12)) return;
+    float range = MRF32(0x007a5734u), mx = MRF32(me + 0x60u), my = MRF32(me + 0x64u);
+    if (!__builtin_isfinite(range) || range <= 0.f) return;
+    for (int i = 0; i < g_spot.n; i++){
+        const MpSpot *sp = &g_spot.s[i];
+        uint32_t t = sp->trig, r = sp->race;
+        if (sp->kind != MPS_ONLY || !ok(r, RACE_SZ) || !ok(t, 0x44) ||
+            t < g_spot.first || t >= g_spot.end || MR32(t + 0x30u) != MR32(r + 0x28u)) continue;
+        /* CareerEvent::GetType (0x5002E0): SUV is 7 here, unlike map icon 6. */
+        int type = MR8(r + 0xdu) ? 7 : MR8(r + 0x34u) == 2 ? 5 :
+                   MR8(r + 0xfu) == 1 ? 4 : MR8(r + 0xfu) == 2 ? 2 :
+                   MR8(r + 0xfu) == 4 ? 1 : MR8(r + 0xfu) == 5 ? 3 : 0;
+        float dx = MRF32(t + 4u) - mx, dy = MRF32(t + 8u) - my, d2 = dx * dx + dy * dy;
+        if (!__builtin_isfinite(d2) || d2 > range * range) continue;
+        for (uint32_t k = 0; k < 12; k++){
+            uint32_t def = 0x00802300u + k * 12u, slot = 0x00890020u + k * 8u;
+            if (MR32(def) || MR32(def + 4u) != (uint32_t)type) continue;
+            if (!MR32(slot) || d2 < MRF32(slot + 4u)){
+                MR32(slot) = t;
+                MRF32(slot + 4u) = d2;
+            }
+            break;
+        }
+    }
+#endif
+}
+
 /* ---- multiplayer races from free roam: the lobby ------------------------------------------------ */
 /* A player at a race spot opens a lobby there (Multiplayer); the others near
  * it see it (a label over the spot, the world map) and join it with Enter at
@@ -7007,16 +7045,30 @@ int roam_game_card_question(void){ return g_mpd.dlg == MPD_CARD; }
 #endif
 
 /* ---- multiplayer races from free roam: labels over the spots ---------------------------------- */
-/* A lobby shows its host, race and players over its start (gold, from
+/* A lobby shows its host, race and players over its start (from
  * MP_SEE_LOBBY_M), a multiplayer-only spot near the player what it is
- * (light blue, from MP_SEE_ONLY_M); the game draws its own markers for the
- * open races.  The nearest TAG_MPN on the screen get one, as the names over
+ * (from MP_SEE_ONLY_M), both in the race type's colour. Native effects mark open races
+ * and multiplayer-only spots (roam_game_event_effects); these labels add the
+ * multiplayer context. The nearest TAG_MPN on the screen get one, as the names over
  * friends' cars (tags_update), after the HUD's update. */
 #if MPRACES
 #define MP_SEE_LOBBY_M  250.f
 #define MP_SEE_ONLY_M   50.f
 #define MP_RGB_LOBBY    0xffc832u
-#define MP_RGB_ONLY     0xa0d2ffu
+#define MP_LABEL_HEIGHT 4.2f          /* above the native floating event icon */
+/* World-event colours, in tag_text_rgb's 0xRRGGBB format. Both a waiting
+ * lobby and an empty multiplayer start identify their race by its colour. */
+static uint32_t mp_race_rgb(uint32_t r){
+    if (MR8(r + 0xdu)) return 0xffa040u;           /* SUV */
+    if (MR8(r + 0x34u) == 2u) return 0xffdf40u;   /* URL */
+    switch (MR8(r + 0xfu)){
+    case 1: return 0x70e870u;                     /* sprint: green */
+    case 2: return 0x70dcdcu;                     /* Street X: cyan */
+    case 4: return 0x609cffu;                     /* drag: blue */
+    case 5: return 0xffa040u;                     /* drift: orange */
+    default: return 0xc060ffu;                    /* circuit: purple */
+    }
+}
 /* after a lobby's or spot's words (here and on the world map) where a win counts in the player's career (mp_counts):
  * the game's fonts have no star, the page's panel says it in full */
 #define MP_COUNTS_TAG   " - career"
@@ -7046,7 +7098,7 @@ static void mp_labels(CPU *c){
         if (!l->race || (i < 0 && g_mp.st == MP_IDLE) || (i >= 0 && g_mp.st != MP_IDLE && l->id == g_mp.l.id)) continue;
         float dx = l->x - mx, dy = l->y - my, d2 = dx * dx + dy * dy;
         if (d2 > MP_SEE_LOBBY_M * MP_SEE_LOBBY_M) continue;
-        L[n].x = l->x; L[n].y = l->y; L[n].z = race_z(l->race); L[n].d2 = d2; L[n].rgb = MP_RGB_LOBBY;
+        L[n].x = l->x; L[n].y = l->y; L[n].z = race_z(l->race); L[n].d2 = d2; L[n].rgb = mp_race_rgb(l->race);
         const char *cr = mp_counts(l->race) ? MP_COUNTS_TAG : "";
         if (l->host == g_s.conf.self_id) snprintf(L[n].t, sizeof L[n].t, "Your %s (%d/%d)%s", race_kind(l->race), l->n, l->max, cr);
         else snprintf(L[n].t, sizeof L[n].t, "%s's %s (%d/%d)%s", mp_name(l->host), race_kind(l->race), l->n, l->max, cr);
@@ -7061,7 +7113,7 @@ static void mp_labels(CPU *c){
         int taken = 0;
         for (int j = 0; j < n; j++) if ((L[j].x - x) * (L[j].x - x) + (L[j].y - y) * (L[j].y - y) < 20.f * 20.f) taken = 1;
         if (taken) continue;
-        L[n].x = x; L[n].y = y; L[n].z = race_z(sp->race); L[n].d2 = d2; L[n].rgb = MP_RGB_ONLY;
+        L[n].x = x; L[n].y = y; L[n].z = race_z(sp->race); L[n].d2 = d2; L[n].rgb = mp_race_rgb(sp->race);
         char k[16]; snprintf(k, sizeof k, "%s", race_kind(sp->race)); k[0] = (char)(k[0] >= 'a' && k[0] <= 'z' ? k[0] - 32 : k[0]);
         snprintf(L[n].t, sizeof L[n].t, "%s (multiplayer)%s", k, mp_counts(sp->race) ? MP_COUNTS_TAG : "");
         n++;
@@ -7071,10 +7123,10 @@ static void mp_labels(CPU *c){
     float E[3] = { 0 }, F[3] = { 0 };
     if (on) view_eye(cam, E, F);
     for (int i = 0; i < n; i++){
-        float d[3] = { L[i].x - E[0], L[i].y - E[1], L[i].z + 3.f - E[2] };
+        float d[3] = { L[i].x - E[0], L[i].y - E[1], L[i].z + MP_LABEL_HEIGHT - E[2] };
         float ahead = d[0] * F[0] + d[1] * F[1] + d[2] * F[2];
         if (ahead < 1.f) continue;
-        uint32_t in = gvec(g_gmem + TAG_SCR, L[i].x, L[i].y, L[i].z + 3.f), out = g_gmem + TAG_SCR + 0x10u, av[2] = { out, in };
+        uint32_t in = gvec(g_gmem + TAG_SCR, L[i].x, L[i].y, L[i].z + MP_LABEL_HEIGHT), out = g_gmem + TAG_SCR + 0x10u, av[2] = { out, in };
         rh_call(c, FN_VIEW_SCREEN, G_VIEW1, 0, 2, av);
         float x = MRF32(out), y = MRF32(out + 4u), z = MRF32(out + 8u);
         float w = (float)(int32_t)MR32(G_VIEW_W), h = (float)(int32_t)MR32(G_VIEW_H);

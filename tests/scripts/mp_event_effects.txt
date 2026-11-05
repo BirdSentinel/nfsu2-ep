@@ -1,0 +1,15 @@
+# Native world effects at already-won multiplayer-only races.
+# Seed: completed career. NFSU2_ROAM=1. The script does not enter a race.
+# Verify the original floating type icon and pulsing ground rings in each shot.
+0 bot on
++0 waitroam 6000
++0 bot off
++0 roam smsauto on
++600 careergo S2_CIRCUIT_5
++300 log SHOT circuit
++600 careergo S5_SPRINT_27
++300 log SHOT sprint
++600 careergo S3_H_STREET_10
++300 log SHOT street
++600 log EFFECTS DONE
++30 quit

@@ -833,6 +833,7 @@ void savegame_frame(void);                    /* savegame.c: the pause menu's Sa
 void reads_frame(CPU *c);                     /* overrides.c: the streamer's reads and Loading screens, for the log */
 void intro_frame(CPU *c);                     /* intro.c: the title screen's line under the copyright */
 void roam_game_hud(CPU *c);                 /* its names over friends' cars */
+void roam_game_event_effects(void);         /* multiplayer spots in the native world effects */
 int roam_game_cmd(CPU *c, const char *args, long *wait_start);
 int coop_cmd(CPU *c, const char *args, long *wait_start);
 void coop_frame(CPU *c);
@@ -848,6 +849,9 @@ int roam_hook(CPU *c, uint32_t ip){
     /* Player::Update's HUD step (0x600590), behind its call of the HUD
      * update (0x4EC5A0), where the game places its own LAN race labels */
     case HOOK_SITE(0x006005e0): roam_game_hud(c); return 1;
+    /* Event effects: native nearest-trigger selection is complete, but the
+     * floating icons and pulsing ground rings have not been updated yet. */
+    case HOOK_SITE(0x00605bcc): roam_game_event_effects(); return 1;
     /* the main loop's call of World::DoTimestep (0x609CE0), its only one */
     case HOOK_SITE(0x00581407): racenet_prestep(c); return 1;
     /* the customization shops' push of the Visual Rating box (0x557EC0), at
