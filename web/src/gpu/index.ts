@@ -647,8 +647,8 @@ export async function attachRenderer(proc: GameProcess, canvas: HTMLCanvasElemen
     const reads: { name: string | null; rb: Readback; waiter?: (b: Blob) => void; mark?: boolean; skin?: boolean }[] = [];
     const ownSkin = owners.find(([, vip]) => vip === 0)?.[0];
     if (skinSync.ready && ownSkin && !skinCaptureBusy && t0 - skinCaptureAt > 10000) {
-      const snap = enc.snapshot(ce, ownSkin, false);
-      if (snap && snap.tex.width === 512 && snap.tex.height === 512) {
+      const snap = enc.snapshot(ce, ownSkin, false, skinSync.maxSize);
+      if (snap && [512, 1024].includes(snap.tex.width) && snap.tex.height === snap.tex.width) {
         skinCaptureAt = t0; skinCaptureBusy = true;
         reads.push({ name: null, rb: copyOut(ce, snap.tex), skin: true, waiter: png => { void skinSync.publish(png).catch(x => log(`[skins] upload failed: ${x}`)); } });
       }

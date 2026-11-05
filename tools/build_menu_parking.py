@@ -54,7 +54,7 @@ def build(source,photo,output):
   l={tag:(a,z) for tag,a,z in v.walk(original,p,e) if tag>>28!=8};hp=v.align(l[0x134011][0],16);name=original[hp+164:l[0x134011][1]].split(b'\0')[0].decode()
   if name not in ('BACKDROP','BACKDROP_FLOOR'):continue
   isfloor=name=='BACKDROP_FLOOR';hash=0x957c075e if isfloor else 0x4d5565d8
-  points=[(-26,-16,-.03),(26,-16,-.03),(26,35,-.03),(-26,35,-.03)] if isfloor else [(-22.5,35,0),(16.5,35,0),(16.5,35,13),(-22.5,35,13)]
+  points=[(-26,-16,-.03),(26,-16,-.03),(26,35,-.03),(-26,35,-.03)] if isfloor else [(-30,35,0),(30,35,0),(30,35,20),(-30,35,20)]
   uv=[(0,1),(1,1),(1,0),(0,0)]
   vp,ve=l[0x134b01];vp=v.align(vp,128);mp,me=l[0x134b02];mp=v.align(mp,16);ip,ie=l[0x134b03];ip=v.align(ip,16);sp,se=l[0x134012]
   struct.pack_into('<I',b,sp,hash)

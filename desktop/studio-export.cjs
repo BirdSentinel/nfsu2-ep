@@ -21,7 +21,7 @@ async function exportToGame(root, entries, validate) {
     const target = path.join(folder, `${entry.car}_CONTEST_01.png`);
     await noLink(target, true);
     const bytes = Buffer.from(entry.bytes);
-    if (bytes.length > 8 * 1024 * 1024 || bytes.length < 24 || bytes.subarray(0,8).toString('hex') !== '89504e470d0a1a0a' || bytes.readUInt32BE(16) !== 512 || bytes.readUInt32BE(20) !== 512) throw Error('Expected a 512x512 PNG');
+    if (bytes.length > 8 * 1024 * 1024 || bytes.length < 24 || bytes.subarray(0,8).toString('hex') !== '89504e470d0a1a0a' || ![512, 1024].includes(bytes.readUInt32BE(16)) || bytes.readUInt32BE(20) !== bytes.readUInt32BE(16)) throw Error('Expected a 512x512 or 1024x1024 PNG');
     validate(bytes);
     checked.push({ car: entry.car, folder, target, bytes });
   }

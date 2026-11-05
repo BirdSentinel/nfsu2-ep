@@ -2,7 +2,6 @@
 // WASM decompression hook, never a modification of the original VINYLS.BIN.
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const SIZE = 512, LEVELS = 7, PIXELS = 349504;
 function hashName(name) {
   let h = 0xffffffff;
   for (const c of Buffer.from(name, 'ascii')) h = (Math.imul(h, 33) + c) >>> 0;
@@ -64,7 +63,10 @@ function paletteOf(rgba) {
   });
 }
 function encode(rgba, mask = false) {
-  if (rgba.length !== SIZE * SIZE * 4) throw Error('Expected 512x512 RGBA pixels');
+  const SIZE = Math.sqrt(rgba.length / 4);
+  if (SIZE !== 512 && SIZE !== 1024) throw Error('Expected 512x512 or 1024x1024 RGBA pixels');
+  const LEVELS = SIZE === 1024 ? 8 : 7;
+  let PIXELS = 0; for (let w = SIZE, l = 0; l < LEVELS; l++, w /= 2) PIXELS += w * w;
   const palette = mask ? Array.from({ length: 256 }, (_, i) => [i, i, i]) : paletteOf(rgba);
   const result = Buffer.alloc(16 + PIXELS + 1024);
   result.write('VPX1'); result.writeUInt32LE(SIZE, 4); result.writeUInt32LE(SIZE, 8); result.writeUInt32LE(LEVELS, 12);
@@ -117,17 +119,28 @@ function prepareVinyls(data, decodePNG) {
       if (png.length < 24 || !png.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) throw Error('Not a PNG');
       const w = png.readUInt32BE(16), h = png.readUInt32BE(20);
       if (!w || !h || w > 4096 || h > 4096) throw Error('PNG dimensions must be between 1 and 4096');
-      const rgba = decodePNG(png);
+      const size = w === 1024 && h === 1024 ? 1024 : 512;
+      const rgba = decodePNG(png, size, size);
       for (const mask of [false, true]) {
         // Retail metadata truncates long labels (e.g. ESCALADE's _MASK).
         // Its hash remains complete, so use that stable ID for runtime lookup.
         const key = hashName(name + (mask ? '_MASK' : '')).toString(16).padStart(8, '0');
-        const p = `CARS/${car}/VINYLS/${key}.vpx`, buffer = encode(rgba, mask);
+        const p = `CARS/${car}/VINYLS/${key}.vpx`, encoded = encode(rgba, mask);
+        let buffer = encoded;
+        if (size === 1024) {
+          // Keep the retail allocation intact. The HD compositor reads the
+          // full indexed image separately; older clients use mip 1 safely.
+          const hd = `CARS/${car}/VINYLS/${key}.vph`;
+          prepared.set(hd.toLowerCase(), { buffer: encoded, size: encoded.length });
+          data.entries.push({ p: hd, s: encoded.length, m: parseInt(crypto.createHash('sha256').update(encoded).digest('hex').slice(0, 12), 16) });
+          buffer = Buffer.concat([encoded.subarray(0, 16), encoded.subarray(16 + 1024 * 1024)]);
+          buffer.writeUInt32LE(512, 4); buffer.writeUInt32LE(512, 8); buffer.writeUInt32LE(7, 12);
+        }
         const stamp = parseInt(crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 12), 16);
         prepared.set(p.toLowerCase(), { buffer, size: buffer.length });
         data.entries.push({ p, s: buffer.length, m: stamp });
       }
-      notes.push(`Loaded ${car}/${name}.png (512x512; generated alpha mask)`);
+      notes.push(`Loaded ${car}/${name}.png (${size}x${size}; generated alpha mask)`);
     } catch (e) { notes.push(`ERROR ${car}/${name}.png: ${e.message}`); }
   }
   for (const [key, value] of prepared) data.files.set(key, value);

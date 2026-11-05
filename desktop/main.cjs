@@ -125,7 +125,7 @@ async function createClient(id, initiallyStudio) {
       try {
         return await require('./studio-export.cjs').exportToGame(root, entries, bytes => {
           const image = nativeImage.createFromBuffer(bytes), size = image.getSize();
-          if (image.isEmpty() || size.width !== 512 || size.height !== 512) throw Error('Invalid PNG');
+          if (image.isEmpty() || ![512, 1024].includes(size.width) || size.height !== size.width) throw Error('Invalid PNG');
         });
       } finally { exporting = false; }
     });

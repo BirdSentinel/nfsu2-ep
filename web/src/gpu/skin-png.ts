@@ -1,6 +1,6 @@
 // Car-skin alpha is shader data, not image transparency. Canvas/ImageBitmap
 // premultiplication destroys RGB where alpha is zero. Keep all four bytes raw.
-const SIZE = 512, ROW = SIZE * 4, RAW = (ROW + 1) * SIZE;
+const MAX_PNG = 4_300_000;
 const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 function chunk(name: string, data: Uint8Array): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(data.length + 12), v = new DataView(out.buffer);
@@ -16,7 +16,8 @@ function chunk(name: string, data: Uint8Array): Uint8Array<ArrayBuffer> {
   return out;
 }
 export async function encodeSkinPng(rgba: Uint8Array): Promise<Blob> {
-  if (rgba.length !== ROW * SIZE) throw new Error('Invalid skin size');
+  const SIZE = Math.sqrt(rgba.length / 4), ROW = SIZE * 4, RAW = (ROW + 1) * SIZE;
+  if (SIZE !== 512 && SIZE !== 1024) throw new Error('Invalid skin size');
   const scan = new Uint8Array(RAW);
   for (let y = 0; y < SIZE; y++) scan.set(rgba.subarray(y * ROW, (y + 1) * ROW), y * (ROW + 1) + 1);
   const compressed = new Uint8Array(await new Response(new Blob([scan]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
@@ -26,22 +27,23 @@ export async function encodeSkinPng(rgba: Uint8Array): Promise<Blob> {
 }
 // Accept only our bounded, filter-zero RGBA wire format, not arbitrary images.
 export async function decodeSkinPng(png: Blob): Promise<Uint8Array<ArrayBuffer>> {
-  if (png.size > 1100000) throw new Error('Skin too large');
+  if (png.size > MAX_PNG) throw new Error('Skin too large');
   const bytes = new Uint8Array(await png.arrayBuffer()), view = new DataView(bytes.buffer);
   if (!signature.every((b, i) => bytes[i] === b)) throw new Error('Invalid PNG');
   const parts: Uint8Array<ArrayBuffer>[] = [];
-  let header = false;
+  let header = false, SIZE = 0;
   for (let at = 8; at + 12 <= bytes.length;) {
     const n = view.getUint32(at), end = at + 12 + n;
     if (end > bytes.length) throw new Error('Truncated PNG');
     const type = String.fromCharCode(...bytes.subarray(at + 4, at + 8));
     if (type === 'IHDR') {
-      if (header || at !== 8 || n !== 13 || view.getUint32(at + 8) !== SIZE || view.getUint32(at + 12) !== SIZE || bytes[at + 16] !== 8 || bytes[at + 17] !== 6 || bytes[at + 18] || bytes[at + 19] || bytes[at + 20]) throw new Error('Invalid skin format');
-      header = true;
+      if (header || at !== 8 || n !== 13 || ![512, 1024].includes(view.getUint32(at + 8)) || view.getUint32(at + 12) !== view.getUint32(at + 8) || bytes[at + 16] !== 8 || bytes[at + 17] !== 6 || bytes[at + 18] || bytes[at + 19] || bytes[at + 20]) throw new Error('Invalid skin format');
+      SIZE = view.getUint32(at + 8); header = true;
     } else if (type === 'IDAT') parts.push(bytes.slice(at + 8, at + 8 + n));
     at = end;
   }
   if (!header || !parts.length) throw new Error('Missing skin pixels');
+  const ROW = SIZE * 4, RAW = (ROW + 1) * SIZE;
   const reader = new Blob(parts).stream().pipeThrough(new DecompressionStream('deflate')).getReader();
   const scan = new Uint8Array(RAW); let used = 0;
   try {

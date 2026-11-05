@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { inflateSync, deflateSync } from 'node:zlib';
 import { encodeSkinPng, decodeSkinPng } from '../src/gpu/skin-png.ts';
 
+test('1024 skin preserves individual adjacent pixels through the online codec', async () => {
+  const pixels = new Uint8Array(1024 * 1024 * 4);
+  for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 73 + Math.floor(i / 4096)) & 255;
+  const png = await encodeSkinPng(pixels);
+  assert.equal(new DataView(await png.arrayBuffer()).getUint32(16), 1024);
+  assert.deepEqual(await decodeSkinPng(png), pixels);
+  await assert.rejects(encodeSkinPng(new Uint8Array(2048 * 2048 * 4)), /Invalid skin size/);
+});
+
 test('online car skins preserve RGB even with zero alpha, and every material alpha value', async () => {
   const pixels = new Uint8Array(512 * 512 * 4);
   for (let i = 0; i < pixels.length; i += 4) {

@@ -7,12 +7,12 @@ const { WebSocket } = require('../web/node_modules/ws');
 const { createOnline } = require('./online.cjs');
 const { startServer } = require('./server.cjs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-function testPNG(noisy) {
-  const raw = Buffer.alloc(512 * (1 + 512 * 4));
+function testPNG(noisy, size = 512) {
+  const raw = Buffer.alloc(size * (1 + size * 4));
   if (noisy) require('node:crypto').randomFillSync(raw);
-  for (let y = 0; y < 512; y++) {
-    raw[y * 2049] = 0;
-    for (let x = 0; x < 512; x++) { const p = y * 2049 + 1 + x * 4; if (!noisy) raw[p] = 255; raw[p + 3] = 255; }
+  for (let y = 0; y < size; y++) {
+    raw[y * (1 + size * 4)] = 0;
+    for (let x = 0; x < size; x++) { const p = y * (1 + size * 4) + 1 + x * 4; if (!noisy) raw[p] = 255; raw[p + 3] = 255; }
   }
   function chunk(name, data) {
     const b = Buffer.alloc(12 + data.length); b.writeUInt32BE(data.length); b.write(name, 4); data.copy(b, 8);
@@ -20,7 +20,7 @@ function testPNG(noisy) {
     for (const value of b.subarray(4, -4)) { crc ^= value; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0); }
     b.writeUInt32BE((crc ^ 0xffffffff) >>> 0, b.length - 4); return b;
   }
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(512); ihdr.writeUInt32BE(512, 4); ihdr[8] = 8; ihdr[9] = 6;
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
   return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', ihdr), chunk('IDAT', require('node:zlib').deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64');
 }
 async function until(fn) { for (let i = 0; i < 150; i++) { const result = await fn(); if (result) return result; await sleep(40); } throw Error('Timed out'); }
@@ -62,10 +62,11 @@ test('standalone host: two local clients exchange game packets and custom skins 
     assert.equal(got.readUInt32BE(4), peers[0].vip >>> 0);
     const counts = await (await fetch(peers[0].origin + '/players')).json(); assert.equal(counts.players, 2);
     // Same car/vinyl slot, different session-owned designs; no files on the host.
-    const pngs = [testPNG(false), testPNG(true)];
+    const pngs = [testPNG(false), testPNG(true, 1024)];
     for (let i = 0; i < 2; i++) {
       peers[i].ws.send(JSON.stringify({ t: 'skin-hello' }));
-      await until(() => peers[i].messages.some(m => m.t === 'skin-ready'));
+      const ready=await until(() => peers[i].messages.find(m => m.t === 'skin-ready'));
+      assert.equal(ready.maxSize,1024);
       peers[i].ws.send(JSON.stringify({ t: 'skin-put', vip: peers[1-i].vip, digest: String(i).repeat(64), png: pngs[i] }));
       await until(() => peers[i].messages.some(m => m.t === 'skin-saved'));
     }

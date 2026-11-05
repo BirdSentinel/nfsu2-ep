@@ -166,7 +166,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         shared_session: true, degree: 48, min_degree: 48, max_players: 49,
         ..RoamOptions::default()
     }, Arc::new(|s| log::line(s)));
-    let lan = LanSwitch::new(LanOptions { max_peers: config.max_players, max_text: 1_501_000, max_payload: 1_501_000, ..Default::default() }, "",
+    let lan = LanSwitch::new(LanOptions { max_peers: config.max_players, max_text: 5_801_000, max_payload: 5_801_000, ..Default::default() }, "",
         Some(online.clone()), Some(roam.clone()), None, Some(state.join("lan-addresses.json")));
     online.attach_switch(lan.switch_send()); roam.attach_switch(lan.switch_send());
     let weak_lan = Arc::downgrade(&lan);

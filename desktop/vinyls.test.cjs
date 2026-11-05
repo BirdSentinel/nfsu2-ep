@@ -15,6 +15,16 @@ function archive() {
   b.writeUInt32LE(hashName('240SX_BODY_07'), 8); b.writeUInt32LE(hashName('240SX_BODY_07_MASK'), 32);
   return b;
 }
+
+test('1024 artwork retains one-pixel detail and includes a safe 512 mip chain', () => {
+  const rgba = Buffer.alloc(1024 * 1024 * 4);
+  for (let p = 0; p < rgba.length; p += 4) { rgba[p] = ((p / 4) & 1) * 255; rgba[p + 3] = 255; }
+  const art = encode(rgba), mask = encode(rgba, true);
+  assert.equal(art.readUInt32LE(4), 1024); assert.equal(art.readUInt32LE(12), 8);
+  assert.notEqual(art[16], art[17]);
+  assert.equal(art.length - 1024 * 1024, 350544);
+  assert.equal(mask[16 + 1024 * 1024], 255);
+});
 test('PNG encoder creates palette, seven mip levels and alpha mask', () => {
   const art = encode(pixels()), mask = encode(pixels(), true), palette = 16 + 349504;
   assert.equal(art.length, 350544); assert.equal(art.toString('ascii', 0, 4), 'VPX1');
@@ -75,3 +85,18 @@ test('virtual overrides serve full and ranged reads; source archive is unchanged
   } finally { if (server) { server.closeAllConnections(); await new Promise(r => server.close(r)); } fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+
+test('1024 launch prepares independent HD and retail-compatible virtual files', async () => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vinyl-hd-')),dir=path.join(root,'game/CARS/240SX/VINYLS');let server;
+ try {
+  fs.mkdirSync(dir,{recursive:true});fs.mkdirSync(path.join(root,'web'));fs.writeFileSync(path.join(dir,'../VINYLS.BIN'),archive());
+  const png=Buffer.alloc(24);Buffer.from('89504e470d0a1a0a','hex').copy(png);png.writeUInt32BE(1024,16);png.writeUInt32BE(1024,20);fs.writeFileSync(path.join(dir,'240SX_BODY_07.png'),png);
+  server=await startServer(root,0,(_,w,h)=>{assert.equal(w,1024);assert.equal(h,1024);return Buffer.alloc(w*h*4,255);});
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const hd=Buffer.from(await(await fetch(base+'/data/CARS/240SX/VINYLS/d48e98f3.vph')).arrayBuffer());
+  const fallback=Buffer.from(await(await fetch(base+'/data/CARS/240SX/VINYLS/d48e98f3.vpx')).arrayBuffer());
+  assert.equal(hd.readUInt32LE(4),1024);assert.equal(hd.readUInt32LE(12),8);assert.equal(hd.length,1399120);
+  assert.equal(fallback.readUInt32LE(4),512);assert.equal(fallback.readUInt32LE(12),7);assert.equal(fallback.length,350544);
+  assert.deepEqual(fallback.subarray(16),hd.subarray(16+1024*1024));
+ } finally {if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}fs.rmSync(root,{recursive:true,force:true});}
+});

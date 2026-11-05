@@ -68,7 +68,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'docs/web/PNG-VINYLS.md') -Destination (
 $studio = Join-Path $repo 'out/vinyl-studio'
 if (Test-Path -LiteralPath (Join-Path $studio 'models.js')) {
     Copy-Item -LiteralPath $studio -Destination (Join-Path $output 'VinylStudio') -Recurse
-    foreach ($file in @('index.html', 'app.js', 'loading.js', 'projects.js', 'style.css', 'viewer.js', 'core.js', 'decals.js')) {
+    foreach ($file in @('index.html', 'app.js', 'loading.js', 'projects.js', 'style.css', 'viewer.js', 'core.js', 'decals.js', 'preview.js')) {
         Copy-Item -LiteralPath (Join-Path $repo "vinyl-studio/$file") -Destination (Join-Path $output 'VinylStudio') -Force
     }
     New-Item -ItemType Directory -Path (Join-Path $output 'VinylStudio/vinyls') -Force | Out-Null

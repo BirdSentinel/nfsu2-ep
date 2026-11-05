@@ -982,12 +982,13 @@ export class Encoder {
   }
 
   /** diagnostics: texture `id` (level 0, face 0) drawn into a new bgra8 texture of its size, or null */
-  snapshot(enc: GPUCommandEncoder, id: number, opaque = true): { tex: GPUTexture; info: string } | null {
+  snapshot(enc: GPUCommandEncoder, id: number, opaque = true, maxSize = Infinity): { tex: GPUTexture; info: string } | null {
     const t = this.tex[id];
     if (!t) return null;
-    const out = this.device.createTexture({ size: [t.w, t.h], format: 'bgra8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+    const scale = Math.min(1, maxSize / Math.max(t.w, t.h));
+    const out = this.device.createTexture({ size: [Math.max(1, Math.round(t.w * scale)), Math.max(1, Math.round(t.h * scale))], format: 'bgra8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
     const v = t.tex.createView({ dimension: '2d', baseArrayLayer: 0, arrayLayerCount: 1, baseMipLevel: 0, mipLevelCount: 1 });
-    this.copyQuad(enc, v, out.createView(), 'bgra8unorm', this.nearest, undefined, opaque);
+    this.copyQuad(enc, v, out.createView(), 'bgra8unorm', scale < 1 ? this.linear : this.nearest, undefined, opaque);
     this.destroyLater.push(out);
     return { tex: out, info: `${t.w}x${t.h} ${t.tex.format} fmt ${t.fmt} levels ${t.levels}${t.cube ? ' cube' : ''}${t.rt ? ' rt' : ''}` };
   }
@@ -1017,9 +1018,10 @@ export class Encoder {
         const pending = entry;
         void decodeSkinPng(src.png).then(pixels => {
             if (this.skinImages.get(vip) !== pending) return;
-            const tex = this.device.createTexture({ size: [512, 512], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
-            this.device.queue.writeTexture({ texture: tex }, pixels, { bytesPerRow: 512 * 4 }, [512, 512]);
-            pending.texture = { ...base, serial: this.serial++, tex, view: tex.createView(), w: 512, h: 512, levels: 1, cube: false, rt: false, rtViews: [] };
+            const size = Math.sqrt(pixels.length / 4);
+            const tex = this.device.createTexture({ size: [size, size], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+            this.device.queue.writeTexture({ texture: tex }, pixels, { bytesPerRow: size * 4 }, [size, size]);
+            pending.texture = { ...base, serial: this.serial++, tex, view: tex.createView(), w: size, h: size, levels: 1, cube: false, rt: false, rtViews: [] };
             this.log(`[skins] applied player ${vip} design to car texture ${id}`);
         }).catch(error => this.log(`[skins] invalid image, original skin retained: ${error}`));
       }

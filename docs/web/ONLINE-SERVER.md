@@ -69,13 +69,13 @@ a játék saját Online módjának barátkezelése a szerver része.
 ## Egyedi online vinylek
 
 A frissített kliens és szerver automatikusan megosztja a játékos autójának kész,
-512×512-es karosszéria-textúráját, így a Vinyl Studióból exportált és az autóra
+512×512-es vagy 1024×1024-es karosszéria-textúráját, így a Vinyl Studióból exportált és az autóra
 felszerelt egyedi vinyl a többi játékosnál is megjelenik. Külön feltöltés nem kell.
 A festés és a többi felszerelt vinylréteg együtt kerül át.
 
 A képek a játékos aktuális kapcsolatához tartoznak, ezért ugyanazon autó ugyanazon
 vinylhelyén is lehet két eltérő design. A fogadó kliens nem írja felül a saját
-`game` mappáját. A szerver memóriában, legfeljebb 64 MB-ban tartja a képeket,
+`game` mappáját. A szerver memóriában, legfeljebb 320 MB-ban tartja a képeket,
 kilépéskor törli őket; a kliensek csak a megjelenő autók képeit kérik le.
 Változás ellenőrzése 10 másodpercenként történik; a közeli autók mintái ezért rövid
 késéssel érkezhetnek meg. A funkcióhoz a szervert és minden érintett klienst frissíteni kell.
@@ -94,3 +94,5 @@ a `desktop/build-server.ps1 -Binary <fájl>` paranccsal lehet becsomagolni. Linu
 `--target x86_64-pc-windows-gnu` és MinGW linker használható. A kész csomag futtatásához
 ezek egyike sem szükséges. A szerver forrása: `web/server-rs/crates/standalone`.
 
+
+Az új Vinyl Studio 1024×1024 méretben exportál. Régi szerverhez csatlakozva az új kliens 512×512-es kompatibilis képet küld; az eredeti 1024-es megosztáshoz a szervercsomagot is frissíteni kell.

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 uint8_t *g_mem;
+void metal_replace_texture(unsigned a,unsigned b,unsigned c,unsigned d,unsigned e,const uint8_t *f){ assert(!"Unexpected GPU call in decoder test"); }
 void vinyl_png_decoded(uint32_t, uint32_t);
 static char fixture[1024];
 int fileio_resolve_game(const char *win, char *out, size_t n) {

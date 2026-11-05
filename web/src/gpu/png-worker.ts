@@ -54,7 +54,7 @@ onmessage = async (e: MessageEvent<ToPng | ToPngTile | ToPngEnd>) => {
   try {
     const img = image(px, w, h, bpr, m.preserveAlpha);
     if (m.preserveAlpha) {
-      if (w !== 512 || h !== 512) throw new Error("Invalid skin dimensions");
+      if (![512, 1024].includes(w) || h !== w) throw new Error("Invalid skin dimensions");
       post({ id, png: await encodeSkinPng(new Uint8Array(img.data.buffer)) });
       return;
     }

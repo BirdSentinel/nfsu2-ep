@@ -1677,6 +1677,25 @@ void sub_00574670(CPU *restrict c){
 #endif
 }
 
+void sub_00611f10_orig(CPU *c);
+void sub_00612280_orig(CPU *c);
+void sub_00611f10(CPU *c){
+#ifdef __wasi__
+    extern void vinyl_png_composite(CPU *, void (*)(CPU *));
+    vinyl_png_composite(c, sub_00611f10_orig);
+#else
+    sub_00611f10_orig(c);
+#endif
+}
+void sub_00612280(CPU *c){
+#ifdef __wasi__
+    extern void vinyl_png_composite(CPU *, void (*)(CPU *));
+    vinyl_png_composite(c, sub_00612280_orig);
+#else
+    sub_00612280_orig(c);
+#endif
+}
+
 /* --- sub_0061b980: NewGetCarPart(type, slot, key, previous, level), thiscall
  * CarPartDB, ret 0x14 -------------------------------------------------------
  * A part of a car type in a ride slot (with a key, after a part, of an

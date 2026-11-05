@@ -3,7 +3,7 @@
   try {
     // Let the loading screen paint before parsing the large model catalog.
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    for (const file of ['models.js', 'library.js', 'core.js', 'decals.js', 'viewer.js', 'app.js', 'projects.js']) {
+    for (const file of ['models.js', 'library.js', 'core.js', 'decals.js', 'preview.js', 'viewer.js', 'app.js', 'projects.js']) {
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = file;

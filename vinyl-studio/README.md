@@ -31,7 +31,7 @@ A **.epvinyl** projekt minden autó rétegeit és a felhasznált képeket egyetl
 fájlban tárolja, így később teljesen szerkeszthetően visszatölthető. Nincs
 automatikus mentés. A korábbi projektformátumok nem támogatottak.
 
-Az export **512×512-es, átlátszó PNG**. Az aktuális autót külön, vagy minden
+Az export **1024×1024-es, átlátszó PNG**. Az aktuális autót külön, vagy minden
 réteggel rendelkező autót ZIP-ben mentheted. A ZIP kész könyvtárszerkezetet ad:
 `game/CARS/<AUTÓ>/VINYLS/<AUTÓ>_CONTEST_01.png`. Az eredeti VINYLS.BIN-hez a
 szerkesztő nem nyúl. Másolás előtt mentsd el a meglévő saját PNG-ket.
@@ -46,7 +46,7 @@ Az autók közötti átvitel kiindulópont; eltérő formáknál kézi igazítá
 
 ## EPVINYL v2 formátum
 
-UTF-8 JSON: `format: "EPVINYL"`, `version: 2`, `resolution: 512`.
+UTF-8 JSON: `format: "EPVINYL"`, `version: 2`, `resolution: 1024`.
 Az `assets` lista azonosítót, nevet és beágyazott PNG data URL-t tárol.
 A `cars` objektum autókódonként alulról felfelé rendezett réteglistát tartalmaz.
 Egy decal az `assetId` mellett 3D pozíciót, normált, érintőirányt, szélességet,
@@ -84,7 +84,7 @@ not supported or converted. Create a new project and re-export the PNG files.
 
 In the portable Electron app, the launcher header opens Vinyl Studio. Use
 **Game launcher** in the editor to return in the same window. Closing the editor
-always asks for confirmation; confirming destroys it and discards unsaved work. **Current car → Game** and **All edited cars → Game** save 512×512 PNGs
+always asks for confirmation; confirming destroys it and discards unsaved work. **Current car → Game** and **All edited cars → Game** save 1024×1024 PNGs
 straight into `game/CARS/<CAR>/VINYLS/<CAR>_CONTEST_01.png`. Existing PNGs are
 backed up in `UserData/VinylBackups` before replacement. Save `.epvinyl`
 separately to keep editable layers. Return to the launcher and restart the game
